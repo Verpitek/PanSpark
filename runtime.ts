@@ -9,6 +9,7 @@ enum OpCode {
   JUMP,
   POINT,
   END,
+  SIGNAL,
 }
 
 interface Instruction {
@@ -16,6 +17,13 @@ interface Instruction {
   args: string[];
   line: number;
 }
+
+const signalMap = new Map<number, string>([
+    [0, "Prime number calculator started"],
+    [1, "Initialized with limit: 100000"],
+    [10, "Prime number found"],
+    [999, "Prime calculation completed successfully"]
+]);
 
 function variableCheck(variableName: string, line: number): number {
   if (variableMemory.has(variableName)) {
@@ -93,16 +101,11 @@ export function run(instructions: Instruction[]) {
       }
       case OpCode.PRINT: {
         const printArg = instruction.args[0]
-        if (printArg.includes(`"`)) {
-          let text = printArg.substring(printArg.indexOf(" ") + 1);
-          console.log(text.replaceAll(`"`, ""));
+        const printVar = variableCheck(instruction.args[0], instruction.line)
+        if (Number.isNaN(printVar)) {
+          throw new Error("Invalid print operation at line " + instruction.line);
         } else {
-          const printVar = variableCheck(instruction.args[0], instruction.line)
-          if (Number.isNaN(printVar)) {
-            throw new Error("Invalid print operation at line " + instruction.line);
-          } else {
-            console.log(printVar);
-          }
+          console.log(printVar);
         }
         break;
       }
@@ -225,9 +228,8 @@ export function run(instructions: Instruction[]) {
               if (check) {
                 const jumpPoint = jumpPointCheck(instructionArgs[4], counter);
                 if (jumpPoint[0] === true) {
-                  counter = jumpPoint[1];
-                }
-              }
+                counter = jumpPoint[1];
+              }}
             }
             break;
           }
@@ -330,6 +332,18 @@ export function run(instructions: Instruction[]) {
               counter = jumpPoint[1];
           }
         break;
+      }
+      case OpCode.SIGNAL: {
+          const signalCode = variableCheck(instruction.args[0], instruction.line);
+          
+          // Look up the signal message from an external map
+          if (signalMap && signalMap.has(signalCode)) {
+              console.log(signalMap.get(signalCode));
+          } else {
+              // Fallback: just print the numeric code
+              console.log(`[Signal ${signalCode}]`);
+          }
+          break;
       }
       default:
         console.log("Invalid operation");
