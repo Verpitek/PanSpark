@@ -208,6 +208,13 @@ export function run(code: string) {
       case "END": {
         break codeloop;
       }
+        case "JUMP": {
+            const jumpPoint = jumpPointCheck(tokens[1])
+            if (jumpPoint[0] === true) {
+                counter = jumpPoint[1];
+            }
+          break;
+        }
       default:
         console.log("Invalid operation");
         break;
