@@ -7,16 +7,23 @@ enum OpCode {
   PRINT,
   IF,
   JUMP,
-  POINT
+  POINT,
+  END,
 }
 
-function variableCheck(variableName: string, counter: number): number {
+interface Instruction {
+  operation: OpCode;
+  args: string[];
+  line: number;
+}
+
+function variableCheck(variableName: string, line: number): number {
   if (variableMemory.has(variableName)) {
     const variable = variableMemory.get(variableName)
     if (variable != undefined) {
       return variable;
     } else {
-      throw new Error("variable " + variableName + " is corrupt or got lost in memory!!! at line " + counter);
+      throw new Error("variable " + variableName + " is corrupt or got lost in memory!!! at line " + line);
       return 0;
     }
   } else {
@@ -24,166 +31,177 @@ function variableCheck(variableName: string, counter: number): number {
     try {
       number = Number(variableName);
     } catch (error) {
-      throw new Error("variable " + variableName + " is not a number at line " + counter);
+      throw new Error("variable " + variableName + " is not a number at line " + line);
       return 0;
     }
     return number;
   }
 }
 
-function jumpPointCheck(jumpPointName: string, counter: number): [boolean, number] {
+function jumpPointCheck(jumpPointName: string, line: number): [boolean, number] {
   if (jumpPoints.has(jumpPointName)) {
     const jumpPoint = jumpPoints.get(jumpPointName)
     if (jumpPoint != undefined) {
       return [true, jumpPoint];
     } else {
-      throw new Error("jump point " + jumpPointName + " is not defined at line " + counter);
+      throw new Error("jump point " + jumpPointName + " is not defined at line " + line);
       return [false, 0];
     }
   } else {
-    throw new Error("jump point " + jumpPointName + " is not defined at line " + counter);
+    throw new Error("jump point " + jumpPointName + " is not defined at line " + line);
     return [false, 0];
   }
 }
 
-export function run(code: string) {
+export function compile(code: string): Instruction[] {
   let lines = code.split("\n");
-
-  // collect jump jumpPointsnumber
+  const instructions: Instruction[] = [];
+  
   for (let counter = 0; counter < lines.length; counter++) {
     let line = lines[counter];
     if (line === '' || line.startsWith('//')) {
       continue;
     }
     let tokens = line.split(" ");
-    let operation = tokens[0].toUpperCase();
-    if (operation == "POINT") {
-      jumpPoints.set(tokens[1], counter);
+    let operation = OpCode[tokens[0].toUpperCase() as keyof typeof OpCode];
+    instructions.push({
+      operation,
+      args: tokens.slice(1),
+      line: counter
+    })
+  }
+  
+  return instructions;
+}
+
+export function run(instructions: Instruction[]) {
+  // collect jumpPoints
+  for (let counter = 0; counter < instructions.length; counter++) {
+    const instruction = instructions[counter]
+    if (instruction.operation === OpCode.POINT) {
+      jumpPoints.set(instruction.args[0], counter);
     }
   }
   
   // Parse and run the code
-  codeloop: for (let counter = 0; counter < lines.length; counter++) {
-    let line = lines[counter];
-    if (line === '' || line.startsWith('//')) {
-      continue;
-    }
-    let tokens = line.split(" ");
-    let operation = tokens[0].toUpperCase();
-    switch (operation) {
-      case "SET": {
-        variableMemory.set(tokens[3], Number(tokens[1]));
+  codeloop: for (let counter = 0; counter < instructions.length; counter++) {
+    const instruction = instructions[counter];
+    switch (instruction.operation) {
+      case OpCode.SET: {
+        variableMemory.set(instruction.args[2], Number(instruction.args[0]));
         break;
       }
-      case "PRINT": {
-        if (line.includes(`"`)) {
-          let text = line.substring(line.indexOf(" ") + 1);
+      case OpCode.PRINT: {
+        const printArg = instruction.args[0]
+        if (printArg.includes(`"`)) {
+          let text = printArg.substring(printArg.indexOf(" ") + 1);
           console.log(text.replaceAll(`"`, ""));
         } else {
-          const printVar = variableCheck(tokens[1], counter)
-          if (Number.isNaN(printVar)){
-            throw new Error("Invalid print operation at line " + counter);
+          const printVar = variableCheck(instruction.args[0], instruction.line)
+          if (Number.isNaN(printVar)) {
+            throw new Error("Invalid print operation at line " + instruction.line);
           } else {
             console.log(printVar);
           }
         }
         break;
       }
-      case "MATH": {
-        switch (tokens[2]) {
+      case OpCode.MATH: {
+        const instructionArgs = instruction.args
+        switch (instructionArgs[1]) {
           case "+": {
-            const argument1 = variableCheck(tokens[1], counter);
-            const argument2 = variableCheck(tokens[3], counter);
+            const argument1 = variableCheck(instructionArgs[0], instruction.line);
+            const argument2 = variableCheck(instructionArgs[2], instruction.line);
             const mathOp = argument1 + argument2;
             if (Number.isNaN(mathOp)) {
-              throw new Error("Invalid operation at line " + counter);
+              throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(tokens[5], argument1 + argument2);
+              variableMemory.set(instructionArgs[4], argument1 + argument2);
             }
             break;
           }
           case "-": {
-            const argument1 = variableCheck(tokens[1], counter);
-            const argument2 = variableCheck(tokens[3], counter);
+            const argument1 = variableCheck(instructionArgs[0], instruction.line);
+            const argument2 = variableCheck(instructionArgs[2], instruction.line);
             const mathOp = argument1 - argument2;
             if (Number.isNaN(mathOp)) {
-              throw new Error("Invalid operation at line " + counter);
+              throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(tokens[5], mathOp);
+              variableMemory.set(instructionArgs[4], mathOp);
             }
             break;
           }
           case "*": {
-            const argument1 = variableCheck(tokens[1], counter);
-            const argument2 = variableCheck(tokens[3], counter);
+            const argument1 = variableCheck(instructionArgs[0], instruction.line);
+            const argument2 = variableCheck(instructionArgs[2], instruction.line);
             const mathOp = argument1 * argument2;
             if (Number.isNaN(mathOp)) {
-              throw new Error("Invalid operation at line " + counter);
+              throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(tokens[5], mathOp);
+              variableMemory.set(instructionArgs[4], mathOp);
             }
             break;
           }
           case "/": {
-            const argument1 = variableCheck(tokens[1], counter);
-            const argument2 = variableCheck(tokens[3], counter);
+            const argument1 = variableCheck(instructionArgs[0], instruction.line);
+            const argument2 = variableCheck(instructionArgs[2], instruction.line);
             const mathOp = argument1 / argument2;
             if (Number.isNaN(mathOp)) {
-              throw new Error("Invalid operation at line " + counter);
+              throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(tokens[5], mathOp);
+              variableMemory.set(instructionArgs[4], mathOp);
             }
             break;
           }
           case "%": {
-            const argument1 = variableCheck(tokens[1], counter);
-            const argument2 = variableCheck(tokens[3], counter);
+            const argument1 = variableCheck(instructionArgs[0], instruction.line);
+            const argument2 = variableCheck(instructionArgs[2], instruction.line);
             const mathOp = argument1 % argument2;
             if (Number.isNaN(mathOp)) {
-              throw new Error("Invalid operation at line " + counter);
+              throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(tokens[5], mathOp);
+              variableMemory.set(instructionArgs[4], mathOp);
             }
             break;
           }
           case "**": {
-            const argument1 = variableCheck(tokens[1], counter);
-            const argument2 = variableCheck(tokens[3], counter);
+            const argument1 = variableCheck(instructionArgs[0], instruction.line);
+            const argument2 = variableCheck(instructionArgs[2], instruction.line);
             const mathOp = Math.pow(argument1, argument2);
             if (Number.isNaN(mathOp)) {
-              throw new Error("Invalid operation at line " + counter);
+              throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(tokens[5], mathOp);
+              variableMemory.set(instructionArgs[4], mathOp);
             }
             break;
           }
           case "sqrt": {
-            const argument1 = variableCheck(tokens[1], counter);
+            const argument1 = variableCheck(instructionArgs[0], instruction.line);
             const mathOp = Math.sqrt(argument1);
             if (Number.isNaN(mathOp)) {
-              throw new Error("Invalid operation at line " + counter);
+              throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(tokens[4], mathOp);
+              variableMemory.set(instructionArgs[3], mathOp);
             }
             break;
           }
           case "log": {
-            const argument1 = variableCheck(tokens[1], counter);
+            const argument1 = variableCheck(instructionArgs[0], instruction.line);
             const mathOp = Math.log(argument1);
             if (Number.isNaN(mathOp)) {
-              throw new Error("Invalid operation at line " + counter);
+              throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(tokens[4], mathOp);
+              variableMemory.set(instructionArgs[3], mathOp);
             }
             break;
           }
           case "sin": {
-            const argument1 = variableCheck(tokens[1], counter);
+            const argument1 = variableCheck(instructionArgs[0], instruction.line);
             const mathOp = Math.sin(argument1);
             if (Number.isNaN(mathOp)) {
-              throw new Error("Invalid operation at line " + counter);
+              throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(tokens[5], mathOp);
+              variableMemory.set(instructionArgs[3], mathOp);
             }
             break;
           }
@@ -194,113 +212,125 @@ export function run(code: string) {
         }
         break;
       }
-      case "IF": {
-        // IF result > 5 >> imdone
-        switch (tokens[2]) {
+      case OpCode.IF: {
+        const instructionArgs = instruction.args;
+        switch (instructionArgs[1]) {
           case ">": {
-            const argument1 = variableCheck(tokens[1], counter);
-            const argument2 = variableCheck(tokens[3], counter);
+            const argument1 = variableCheck(instructionArgs[0], instruction.line);
+            const argument2 = variableCheck(instructionArgs[2], instruction.line);
             const check = argument1 > argument2;
             if (Number.isNaN(argument1) || Number.isNaN(argument2)) {
-              throw new Error("invalid comparison operator at line " + counter);
+              throw new Error("invalid > comparison at line " + instruction.line);
             } else {
-              const jumpPoint = jumpPointCheck(tokens[5], counter);
-              if (jumpPoint[0] === true) {
-                counter = jumpPoint[1];
+              if (check) {
+                const jumpPoint = jumpPointCheck(instructionArgs[4], counter);
+                if (jumpPoint[0] === true) {
+                  counter = jumpPoint[1];
+                }
               }
             }
             break;
           }
           case "<": {
-            const argument1 = variableCheck(tokens[1], counter);
-            const argument2 = variableCheck(tokens[3], counter);
+            const argument1 = variableCheck(instructionArgs[0], instruction.line);
+            const argument2 = variableCheck(instructionArgs[2], instruction.line);
             const check = argument1 < argument2;
             if (Number.isNaN(argument1) || Number.isNaN(argument2)) {
-              throw new Error("invalid comparison operator at line " + counter);
+              throw new Error("invalid < comparison at line " + instruction.line);
             } else {
-              const jumpPoint = jumpPointCheck(tokens[5], counter);
-              if (jumpPoint[0] === true) {
-                counter = jumpPoint[1];
+              if (check) {
+                const jumpPoint = jumpPointCheck(instructionArgs[4], counter);
+                if (jumpPoint[0] === true) {
+                  counter = jumpPoint[1];
+                }
               }
             }
             break;
           }
           case "==": {
-            const argument1 = variableCheck(tokens[1], counter);
-            const argument2 = variableCheck(tokens[3], counter);
+            const argument1 = variableCheck(instructionArgs[0], instruction.line);
+            const argument2 = variableCheck(instructionArgs[2], instruction.line);
             const check = argument1 == argument2;
             if (Number.isNaN(argument1) || Number.isNaN(argument2)) {
-              throw new Error("invalid comparison operator at line " + counter);
+              throw new Error("invalid == comparison at line " + instruction.line);
             } else {
-              const jumpPoint = jumpPointCheck(tokens[5], counter);
-              if (jumpPoint[0] === true) {
-                counter = jumpPoint[1];
+              if (check) {
+                const jumpPoint = jumpPointCheck(instructionArgs[4], counter);
+                if (jumpPoint[0] === true) {
+                  counter = jumpPoint[1];
+                }
               }
             }
             break;
           }
           case "!=": {
-            const argument1 = variableCheck(tokens[1], counter);
-            const argument2 = variableCheck(tokens[3], counter);
+            const argument1 = variableCheck(instructionArgs[0], instruction.line);
+            const argument2 = variableCheck(instructionArgs[2], instruction.line);
             const check = argument1 != argument2;
             if (Number.isNaN(argument1) || Number.isNaN(argument2)) {
-              throw new Error("invalid comparison operator at line " + counter);
+              throw new Error("invalid != comparison at line " + instruction.line);
             } else {
-              const jumpPoint = jumpPointCheck(tokens[5], counter);
-              if (jumpPoint[0] === true) {
-                counter = jumpPoint[1];
+              if (check) {
+                const jumpPoint = jumpPointCheck(instructionArgs[4], counter);
+                if (jumpPoint[0] === true) {
+                  counter = jumpPoint[1];
+                }
               }
             }
             break;
           }
           case ">=": {
-            const argument1 = variableCheck(tokens[1], counter);
-            const argument2 = variableCheck(tokens[3], counter);
+            const argument1 = variableCheck(instructionArgs[0], instruction.line);
+            const argument2 = variableCheck(instructionArgs[2], instruction.line);
             const check = argument1 >= argument2;
             if (Number.isNaN(argument1) || Number.isNaN(argument2)) {
-              throw new Error("invalid comparison operator at line " + counter);
+              throw new Error("invalid >=comparison at line " + instruction.line);
             } else {
-              const jumpPoint = jumpPointCheck(tokens[5], counter);
-              if (jumpPoint[0] === true) {
-                counter = jumpPoint[1];
+              if (check) {
+                const jumpPoint = jumpPointCheck(instructionArgs[4], counter);
+                if (jumpPoint[0] === true) {
+                  counter = jumpPoint[1];
+                }
               }
             }
             break;
           }
           case "<=": {
-            const argument1 = variableCheck(tokens[1], counter);
-            const argument2 = variableCheck(tokens[3], counter);
+            const argument1 = variableCheck(instructionArgs[0], instruction.line);
+            const argument2 = variableCheck(instructionArgs[2], instruction.line);
             const check = argument1 <= argument2;
             if (Number.isNaN(argument1) || Number.isNaN(argument2)) {
-              throw new Error("invalid comparison operator at line " + counter);
+              throw new Error("invalid <=comparison at line " + instruction.line);
             } else {
-              const jumpPoint = jumpPointCheck(tokens[5], counter);
-              if (jumpPoint[0] === true) {
-                counter = jumpPoint[1];
+              if (check) {
+                const jumpPoint = jumpPointCheck(instructionArgs[4], counter);
+                if (jumpPoint[0] === true) {
+                  counter = jumpPoint[1];
+                }
               }
             }
             break;
           }
           default: {
-            throw new Error("invalid comparison operator at line " + counter);
+            throw new Error("invalid comparison operator at line " + instruction.line);
             break codeloop;
           }
         }
         break;
       }
-      case "POINT": {
+      case OpCode.POINT: {
         break;
       }
-      case "END": {
+      case OpCode.END: {
         break codeloop;
       }
-        case "JUMP": {
-            const jumpPoint = jumpPointCheck(tokens[1], counter)
-            if (jumpPoint[0] === true) {
-                counter = jumpPoint[1];
-            }
-          break;
-        }
+      case OpCode.JUMP: {
+        const jumpPoint = jumpPointCheck(instruction.args[0], counter);
+          if (jumpPoint[0] === true) {
+              counter = jumpPoint[1];
+          }
+        break;
+      }
       default:
         console.log("Invalid operation");
         break;
