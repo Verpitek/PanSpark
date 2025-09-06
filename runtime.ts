@@ -10,6 +10,7 @@ enum OpCode {
   POINT,
   END,
   SIGNAL,
+  MEMVIPE,
 }
 
 interface Instruction {
@@ -75,7 +76,7 @@ export function compile(code: string): Instruction[] {
     instructions.push({
       operation,
       args: tokens.slice(1),
-      line: counter
+      line: counter + 1
     })
   }
   
@@ -209,7 +210,7 @@ export function run(instructions: Instruction[]) {
             break;
           }
           default: {
-            throw new Error("invalid math operator!");
+            throw new Error("invalid math operator at line " + instruction.line);
             break codeloop;
           }
         }
@@ -332,6 +333,9 @@ export function run(instructions: Instruction[]) {
               counter = jumpPoint[1];
           }
         break;
+      }
+      case OpCode.MEMVIPE: {
+        variableMemory.clear();
       }
       case OpCode.SIGNAL: {
           const signalCode = variableCheck(instruction.args[0], instruction.line);
