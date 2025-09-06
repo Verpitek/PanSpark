@@ -30,9 +30,25 @@ MATH current + 1 >> current
 IF current <= limit >> outer_loop
 
 SIGNAL 999  // Prime calculation complete
+MEMDUMP
+`
+
+const code2 = 
+  `
+SET 0 >> num1
+SET 300 >> num2
+SET 0 >> counter
+
+POINT loop
+MATH num2 rand >> num1
+MATH num1 floor >> num1
+PRINT num1
+MATH counter + 1 >> counter
+IF counter < 300 >> loop
+MEMDUMP
 `
 
 console.time('runtime')
-run(compile(code));
+run(compile(code2));
 console.timeEnd('runtime');
 resetVM();
