@@ -27,14 +27,9 @@ const signalMap = new Map<number, string>([
 ]);
 
 function variableCheck(variableName: string, line: number): number {
-  if (variableMemory.has(variableName)) {
-    const variable = variableMemory.get(variableName)
-    if (variable != undefined) {
+  const variable = variableMemory.get(variableName)
+  if (variable !== undefined) {
       return variable;
-    } else {
-      throw new Error("variable " + variableName + " is corrupt or got lost in memory!!! at line " + line);
-      return 0;
-    }
   } else {
     let number = 0;
     try {
@@ -98,7 +93,7 @@ export function run(instructions: Instruction[]) {
     switch (instruction.operation) {
       case OpCode.SET: {
         let variable = variableCheck(instruction.args[0], instruction.line);
-        if (variable) {
+        if (variable !== undefined && !Number.isNaN(variable)) {
           variableMemory.set(instruction.args[2], variable);
         } else {
           throw new Error("Invalid variable name at line " + instruction.line);
@@ -359,4 +354,9 @@ export function run(instructions: Instruction[]) {
         break;
     }
   }
+}
+
+export function resetVM() {
+    variableMemory.clear();
+    jumpPoints.clear();
 }
