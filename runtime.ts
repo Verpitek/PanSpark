@@ -68,7 +68,7 @@ export function compile(code: string): Instruction[] {
   
   for (let counter = 0; counter < lines.length; counter++) {
     let line = lines[counter];
-    if (line === '' || line.startsWith('//')) {
+    if (line.trim() === '' || line.startsWith('//') ) {
       continue;
     }
     let tokens = line.split(" ");
@@ -97,7 +97,12 @@ export function run(instructions: Instruction[]) {
     const instruction = instructions[counter];
     switch (instruction.operation) {
       case OpCode.SET: {
-        variableMemory.set(instruction.args[2], Number(instruction.args[0]));
+        let variable = variableCheck(instruction.args[0], instruction.line);
+        if (variable) {
+          variableMemory.set(instruction.args[2], variable);
+        } else {
+          throw new Error("Invalid variable name at line " + instruction.line);
+        }
         break;
       }
       case OpCode.PRINT: {

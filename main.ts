@@ -32,6 +32,13 @@ IF current <= limit >> outer_loop
 SIGNAL 999  // Prime calculation complete
 `
 
+const code2 = 
+  `
+SET 1 >> num1
+SET num1 >> num2
+PRINT num2
+   `
+
 console.time('runtime')
 run(compile(code));
 console.timeEnd('runtime');
