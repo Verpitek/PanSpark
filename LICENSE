@@ -1,0 +1,50 @@
+PanSpark Business Source License (BSL)
+
+Version 1.1
+Copyright (c) 2025 PanSpark Project
+License Summary
+
+This license allows free use, modification, and distribution for non-production purposes. For production use (running the software for internal business purposes or offering it as a service), you must obtain a commercial license from the copyright holder.
+
+This license will automatically convert to the Apache License 2.0 on January 1, 2027, or if the project is unmaintained for 2 consecutive years (whichever comes first).
+Full License Terms
+1. Additional Use Grant
+
+Permission is hereby granted, free of charge, to any person or entity (the "User") obtaining a copy of this software and associated documentation files (the "Software"), to use, copy, modify, merge, publish, distribute, and/or sublicense the Software for any non-production purpose, subject to the conditions below.
+2. Production Use Restriction
+
+The User may not use the Software for any production purpose without an additional license from the copyright holder. "Production purpose" means using the Software:
+
+    For internal business operations
+
+    As part of a service offered to third parties
+
+    In any revenue-generating capacity
+
+3. Change License and Change Date
+
+This License will automatically convert to the Apache License 2.0 on:
+
+    January 1, 2027 (the "Change Date"), or
+
+    If earlier, when the project has received no commits, releases, or official maintenance communications for 2 consecutive years
+
+4. Conversion Notice
+
+Upon conversion, all rights granted under this License will become subject to the Apache License 2.0 terms, and Users may use the Software under those terms for any purpose.
+5. Redistribution
+
+Redistributions in source or binary form must reproduce this License and the copyright notice.
+6. Trademark Rights
+
+This License does not grant any rights to the trademarks of the Licensor or any contributor, except as required for reasonable and customary use in describing the origin of the Software.
+7. Disclaimer
+
+THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+8. Definitions
+
+    "Licensor" means the copyright owner or entity authorized by the copyright owner
+
+    "You" (or "Your") means an individual or Legal Entity exercising permissions granted by this License
+
+    "Source Code" means the preferred form for making modifications
