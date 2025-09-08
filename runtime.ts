@@ -1,5 +1,12 @@
 let variableMemory: Map<string, number> = new Map();
 let jumpPoints: Map<string, number> = new Map();
+const signalMap = new Map<number, string>([
+  [0, "Prime number calculator started"],
+  [1, "Initialized with limit: 100000"],
+  [10, "Prime number found"],
+  [999, "Prime calculation completed successfully"],
+  [69, "Program finished"]
+]);
 
 const colors = {
   Reset: "\x1b[0m",
@@ -81,9 +88,7 @@ enum OpCode {
   SIGNAL,
   MEMVIPE,
   MEMDUMP,
-  INPUT,
-  CALL, // NOT DONE
-  RETURN, // NOT DONE
+  RETURN,
 }
 
 interface Instruction {
@@ -91,13 +96,6 @@ interface Instruction {
   args: string[];
   line: number;
 }
-
-const signalMap = new Map<number, string>([
-  [0, "Prime number calculator started"],
-  [1, "Initialized with limit: 100000"],
-  [10, "Prime number found"],
-  [999, "Prime calculation completed successfully"],
-]);
 
 function variableCheck(variableName: string, line: number): number {
   const variable = variableMemory.get(variableName);
@@ -160,7 +158,7 @@ export function compile(code: string): Instruction[] {
   return instructions;
 }
 
-export async function run(instructions: Instruction[]) {
+export async function run(instructions: Instruction[]): Promise<number> {
   // collect jumpPoints
   for (let counter = 0; counter < instructions.length; counter++) {
     const instruction = instructions[counter];
@@ -569,45 +567,42 @@ export async function run(instructions: Instruction[]) {
       }
       case OpCode.MEMDUMP: {
         const fixedLength = 24;
-        console.log(
-          colors.bg.Red,
-          colors.fg.White,
-          `>>> MEMORY DUMP (\u2022\u02D5 \u2022\u30DE.\u141F Line ${instruction.line} at ${new Date().toLocaleTimeString()} <<<`,
-          colors.Reset,
-          colors.Reset,
-        );
+        console.log(`>>> MEMORY DUMP (Line ${instruction.line} at ${new Date().toLocaleTimeString()} <<<`,);
         for (const [key, value] of variableMemory.entries()) {
           console.log(
-            colors.bg.Crimson,
-            colors.fg.White,
             `var ${key}: ${value}`,
-            colors.Reset,
-            colors.Reset,
           );
         }
         for (const [key, value] of jumpPoints.entries()) {
           console.log(
-            colors.bg.DarkCyan,
             ` jump ${key}: ${value}`,
-            colors.Reset,
           );
         }
         console.log(
-          colors.bg.Magenta,
-          colors.fg.White,
           `Iteration: ${counter} TotalVars: ${variableMemory.size} TotalJumps: ${jumpPoints.size} `,
-          colors.Reset,
         );
+        console.log(">>> End of MEMDUMP <<<")
         break;
       }
-      case OpCode.INPUT: {
-        break;
+      case OpCode.RETURN: {
+        const argument1 = variableCheck(
+          instruction.args[0],
+          instruction.line,
+        );
+        if (Number.isNaN(argument1)) {
+          throw new Error(
+            "Invalid return operation at line " + instruction.line,
+          );
+        } else {
+          return argument1;
+        }
       }
       default:
         console.log("Invalid operation");
         break;
     }
   }
+  return 0;
 }
 
 export function resetVM() {

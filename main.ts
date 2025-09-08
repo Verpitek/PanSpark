@@ -50,17 +50,17 @@ MEMDUMP
 
 let code3 = 
 `
-SET 1230 >> num1
-
+SET 100 >> num1
 SET 0 >> counter
 
-POINT xd
-PRINT counter
+POINT loop
 MATH counter + 1 >> counter
-IF counter < 300 >> xd
+IF counter < num1 >> loop
+RETURN counter // returns the counter XD
 `
 
-console.time('runtime')
-run(compile(code));
+console.time('runtime');
+var kebab = await run(compile(code3))
 console.timeEnd('runtime');
+console.log(kebab)
 resetVM();
