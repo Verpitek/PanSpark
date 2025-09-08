@@ -48,7 +48,19 @@ IF counter < 300 >> loop
 MEMDUMP
 `
 
+let code3 = 
+`
+SET 1230 >> num1
+
+SET 0 >> counter
+
+POINT xd
+PRINT counter
+MATH counter + 1 >> counter
+IF counter < 300 >> xd
+`
+
 console.time('runtime')
-run(compile(code2));
+run(compile(code));
 console.timeEnd('runtime');
 resetVM();
