@@ -1,67 +1,13 @@
 // runtime.ts
 var variableMemory = new Map;
 var jumpPoints = new Map;
-var colors = {
-  Reset: "\x1B[0m",
-  Bright: "\x1B[1m",
-  Dim: "\x1B[2m",
-  Underscore: "\x1B[4m",
-  Blink: "\x1B[5m",
-  Reverse: "\x1B[7m",
-  Hidden: "\x1B[8m",
-  fg: {
-    Black: "\x1B[30m",
-    Red: "\x1B[31m",
-    Green: "\x1B[32m",
-    Yellow: "\x1B[33m",
-    Blue: "\x1B[34m",
-    Magenta: "\x1B[35m",
-    Cyan: "\x1B[36m",
-    White: "\x1B[37m",
-    BrightBlack: "\x1B[90m",
-    BrightRed: "\x1B[91m",
-    BrightGreen: "\x1B[92m",
-    BrightYellow: "\x1B[93m",
-    BrightBlue: "\x1B[94m",
-    BrightMagenta: "\x1B[95m",
-    BrightCyan: "\x1B[96m",
-    BrightWhite: "\x1B[97m",
-    Crimson: "\x1B[38;5;160m",
-    DarkRed: "\x1B[38;5;88m",
-    DarkCyan: "\x1B[38;5;36m",
-    Orange: "\x1B[38;5;208m",
-    Pink: "\x1B[38;5;200m",
-    Purple: "\x1B[38;5;129m",
-    Teal: "\x1B[38;5;30m",
-    Olive: "\x1B[38;5;58m"
-  },
-  bg: {
-    Black: "\x1B[40m",
-    Red: "\x1B[41m",
-    Green: "\x1B[42m",
-    Yellow: "\x1B[43m",
-    Blue: "\x1B[44m",
-    Magenta: "\x1B[45m",
-    Cyan: "\x1B[46m",
-    White: "\x1B[47m",
-    BrightBlack: "\x1B[100m",
-    BrightRed: "\x1B[101m",
-    BrightGreen: "\x1B[102m",
-    BrightYellow: "\x1B[103m",
-    BrightBlue: "\x1B[104m",
-    BrightMagenta: "\x1B[105m",
-    BrightCyan: "\x1B[106m",
-    BrightWhite: "\x1B[107m",
-    Crimson: "\x1B[48;5;160m",
-    DarkRed: "\x1B[48;5;88m",
-    DarkCyan: "\x1B[48;5;36m",
-    Orange: "\x1B[48;5;208m",
-    Pink: "\x1B[48;5;200m",
-    Purple: "\x1B[48;5;129m",
-    Teal: "\x1B[48;5;30m",
-    Olive: "\x1B[48;5;58m"
-  }
-};
+var signalMap = new Map([
+  [0, "Prime number calculator started"],
+  [1, "Initialized with limit: 100000"],
+  [10, "Prime number found"],
+  [999, "Prime calculation completed successfully"],
+  [69, "Program finished"]
+]);
 var OpCode;
 ((OpCode2) => {
   OpCode2[OpCode2["SET"] = 0] = "SET";
@@ -74,16 +20,8 @@ var OpCode;
   OpCode2[OpCode2["SIGNAL"] = 7] = "SIGNAL";
   OpCode2[OpCode2["MEMVIPE"] = 8] = "MEMVIPE";
   OpCode2[OpCode2["MEMDUMP"] = 9] = "MEMDUMP";
-  OpCode2[OpCode2["INPUT"] = 10] = "INPUT";
-  OpCode2[OpCode2["CALL"] = 11] = "CALL";
-  OpCode2[OpCode2["RETURN"] = 12] = "RETURN";
+  OpCode2[OpCode2["RETURN"] = 10] = "RETURN";
 })(OpCode ||= {});
-var signalMap = new Map([
-  [0, "Prime number calculator started"],
-  [1, "Initialized with limit: 100000"],
-  [10, "Prime number found"],
-  [999, "Prime calculation completed successfully"]
-]);
 function variableCheck(variableName, line) {
   const variable = variableMemory.get(variableName);
   if (variable !== undefined) {
@@ -431,24 +369,31 @@ async function run(instructions) {
         }
         case 9 /* MEMDUMP */: {
           const fixedLength = 24;
-          console.log(colors.bg.Red, colors.fg.White, `>>> MEMORY DUMP (•˕ •マ.ᐟ Line ${instruction.line} at ${new Date().toLocaleTimeString()} <<<`, colors.Reset, colors.Reset);
+          console.log(`>>> MEMORY DUMP (Line ${instruction.line} at ${new Date().toLocaleTimeString()} <<<`);
           for (const [key, value] of variableMemory.entries()) {
-            console.log(colors.bg.Crimson, colors.fg.White, `var ${key}: ${value}`, colors.Reset, colors.Reset);
+            console.log(`var ${key}: ${value}`);
           }
           for (const [key, value] of jumpPoints.entries()) {
-            console.log(colors.bg.DarkCyan, ` jump ${key}: ${value}`, colors.Reset);
+            console.log(` jump ${key}: ${value}`);
           }
-          console.log(colors.bg.Magenta, colors.fg.White, `Iteration: ${counter} TotalVars: ${variableMemory.size} TotalJumps: ${jumpPoints.size} `, colors.Reset);
+          console.log(`Iteration: ${counter} TotalVars: ${variableMemory.size} TotalJumps: ${jumpPoints.size} `);
+          console.log(">>> End of MEMDUMP <<<");
           break;
         }
-        case 10 /* INPUT */: {
-          break;
+        case 10 /* RETURN */: {
+          const argument1 = variableCheck(instruction.args[0], instruction.line);
+          if (Number.isNaN(argument1)) {
+            throw new Error("Invalid return operation at line " + instruction.line);
+          } else {
+            return argument1;
+          }
         }
         default:
           console.log("Invalid operation");
           break;
       }
     }
+  return 0;
 }
 function resetVM() {
   variableMemory.clear();
@@ -456,38 +401,18 @@ function resetVM() {
 }
 
 // main.ts
-var code = `
-SIGNAL 0  // Program started
-SET 100000 >> limit
-SET 2 >> current
-SIGNAL 1  // Prime calculation initialized
+var code2 = `
+SET 0 >> num1
+SET 300 >> num2
+SET 0 >> counter
 
-POINT outer_loop
-SET 1 >> is_prime
-SET 2 >> divisor
-
-POINT inner_loop
-MATH current % divisor >> remainder
-
-IF remainder == 0 >> not_prime
-MATH divisor + 1 >> divisor
-IF divisor < current >> inner_loop
-
-IF is_prime == 1 >> print_prime
-POINT not_prime
-JUMP next_number // this is a jump point, im testing comments
-
-POINT print_prime
-PRINT current  // Print the prime number itself
-
-POINT next_number
-MATH current + 1 >> current
-IF current <= limit >> outer_loop
-
-SIGNAL 999  // Prime calculation complete
+POINT loop
+MATH num2 rand >> num1
+MATH num1 floor >> num1
+PRINT num1
+MATH counter + 1 >> counter
+IF counter < 300 >> loop
 MEMDUMP
 `;
-console.time("runtime");
-run(compile(code));
-console.timeEnd("runtime");
+run(compile(code2));
 resetVM();

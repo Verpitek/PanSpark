@@ -1,66 +1,113 @@
-import { run, compile, resetVM } from './runtime';
+import { run, compile, resetVM, buffer } from "./runtime";
 
-let code: string =
-`
-SIGNAL 0  // Program started
-SET 100000 >> limit
-SET 2 >> current
-SIGNAL 1  // Prime calculation initialized
+let code: string = `
+// ===== VARIABLE OPERATIONS =====
+SET 42 >> answer
+SET 100 >> initialValue
+SET initialValue >> copiedValue
 
-POINT outer_loop
-SET 1 >> is_prime
-SET 2 >> divisor
+// ===== MATH OPERATIONS =====
+MATH initialValue + 8 >> addResult
+MATH initialValue - 15 >> subResult
+MATH initialValue * 2 >> mulResult
+MATH initialValue / 4 >> divResult
+MATH initialValue % 3 >> modResult
+MATH 2 ** 8 >> expResult
+MATH 25 sqrt >> sqrtResult
+MATH 100 log >> logResult
+MATH 10 rand >> randResult
+MATH 7.8 floor >> floorResult
+MATH 7.2 ceil >> ceilResult
+MATH 3.14159 sin >> sinResult
 
-POINT inner_loop
-MATH current % divisor >> remainder
+// ===== PRINT OPERATIONS =====
+PRINT answer
+PRINT addResult
+PRINT subResult
+PRINT mulResult
+PRINT divResult
+PRINT modResult
+PRINT expResult
+PRINT sqrtResult
+PRINT logResult
+PRINT randResult
+PRINT floorResult
+PRINT ceilResult
+PRINT sinResult
 
-IF remainder == 0 >> not_prime
-MATH divisor + 1 >> divisor
-IF divisor < current >> inner_loop
-
-IF is_prime == 1 >> print_prime
-POINT not_prime
-JUMP next_number // this is a jump point, im testing comments
-
-POINT print_prime
-PRINT current  // Print the prime number itself
-
-POINT next_number
-MATH current + 1 >> current
-IF current <= limit >> outer_loop
-
-SIGNAL 999  // Prime calculation complete
-MEMDUMP
-`
-
-const code2 = 
-  `
-SET 0 >> num1
-SET 300 >> num2
+// ===== CONTROL FLOW =====
 SET 0 >> counter
-
-POINT loop
-MATH num2 rand >> num1
-MATH num1 floor >> num1
-PRINT num1
+POINT loop_start
 MATH counter + 1 >> counter
-IF counter < 300 >> loop
+PRINT counter
+IF counter < 5 >> loop_start
+
+// ===== CONDITIONAL JUMPS =====
+SET 10 >> x
+SET 15 >> y
+
+IF x > y >> greater
+IF x < y >> less
+IF x == y >> equal
+JUMP comparisons_done
+
+POINT greater
+PRINT 9001
+JUMP comparisons_done
+
+POINT less
+PRINT 9000
+JUMP comparisons_done
+
+POINT equal
+PRINT 9002
+
+POINT comparisons_done
+
+// Scope and Function Simulation with Tabs
+
+// ===== SCOPE TEST =====
+// Define a variable inside a scope
+SET 120 >> unscopedVar
+SCOPE
+  SET 500 >> scopedVar
+  PRINT unscopedVar
+  PRINT scopedVar
+SCOPE_END
+
+// Attempt to access the variable outside of its scope,
+// which should result in an error or undefined value.
+// PRINT scopedVar
+
+// ===== MEMORY OPERATIONS =====
 MEMDUMP
-`
+MEMWIPE
 
-let code3 = 
-`
-SET 100 >> num1
-SET 0 >> counter
+// ===== FUNCTION SIMULATION =====
+SET 5 >> factorial_input
+SET 1 >> factorial_result
+SET 1 >> factorial_counter
 
-POINT loop
-MATH counter + 1 >> counter
-IF counter < num1 >> loop
-RETURN counter // returns the counter XD
-`
+POINT factorial_loop
+MATH factorial_result * factorial_counter >> factorial_result
+MATH factorial_counter + 1 >> factorial_counter
+IF factorial_counter <= factorial_input >> factorial_loop
 
-console.time('runtime');
-var kebab = await run(compile(code3))
-console.timeEnd('runtime');
-console.log(kebab)
+PRINT factorial_result
+
+// ===== RETURN EXAMPLE =====
+SET 42 >> returnValue
+RETURN returnValue
+
+// ===== END (unreachable due to return) =====
+END
+PRINT 999999 // This won't execute
+`;
+
+const kebab = await run(compile(code));
+
+for (let i = 0; i < buffer.length; i++) {
+  console.log(buffer[i]);
+}
+
 resetVM();

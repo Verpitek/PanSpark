@@ -1,81 +1,9 @@
-let variableMemory: Map<string, number> = new Map();
-let jumpPoints: Map<string, number> = new Map();
-const signalMap = new Map<number, string>([
-  [0, "Prime number calculator started"],
-  [1, "Initialized with limit: 100000"],
-  [10, "Prime number found"],
-  [999, "Prime calculation completed successfully"],
-  [69, "Program finished"]
-]);
+export let variableMemory: Map<string, number> = new Map();
+export let jumpPoints: Map<string, number> = new Map();
 
-const colors = {
-  Reset: "\x1b[0m",
-  Bright: "\x1b[1m",
-  Dim: "\x1b[2m",
-  Underscore: "\x1b[4m",
-  Blink: "\x1b[5m",
-  Reverse: "\x1b[7m",
-  Hidden: "\x1b[8m",
-  fg: {
-    Black: "\x1b[30m",
-    Red: "\x1b[31m",
-    Green: "\x1b[32m",
-    Yellow: "\x1b[33m",
-    Blue: "\x1b[34m",
-    Magenta: "\x1b[35m",
-    Cyan: "\x1b[36m",
-    White: "\x1b[37m",
-    BrightBlack: "\x1b[90m",
-    BrightRed: "\x1b[91m",
-    BrightGreen: "\x1b[92m",
-    BrightYellow: "\x1b[93m",
-    BrightBlue: "\x1b[94m",
-    BrightMagenta: "\x1b[95m",
-    BrightCyan: "\x1b[96m",
-    BrightWhite: "\x1b[97m",
-    Crimson: "\x1b[38;5;160m",
-    DarkRed: "\x1b[38;5;88m",
-    DarkCyan: "\x1b[38;5;36m",
-    Orange: "\x1b[38;5;208m",
-    Pink: "\x1b[38;5;200m",
-    Purple: "\x1b[38;5;129m",
-    Teal: "\x1b[38;5;30m",
-    Olive: "\x1b[38;5;58m",
-  },
+export let memory: Map<string, number>[] = [variableMemory];
 
-  // --- Background Colors ---
-  bg: {
-    // Standard ANSI Colors
-    Black: "\x1b[40m",
-    Red: "\x1b[41m",
-    Green: "\x1b[42m",
-    Yellow: "\x1b[43m",
-    Blue: "\x1b[44m",
-    Magenta: "\x1b[45m",
-    Cyan: "\x1b[46m",
-    White: "\x1b[47m",
-
-    // Bright ANSI Colors
-    BrightBlack: "\x1b[100m",
-    BrightRed: "\x1b[101m",
-    BrightGreen: "\x1b[102m",
-    BrightYellow: "\x1b[103m",
-    BrightBlue: "\x1b[104m",
-    BrightMagenta: "\x1b[105m",
-    BrightCyan: "\x1b[106m",
-    BrightWhite: "\x1b[107m",
-
-    // Extended 256-Color Palette
-    Crimson: "\x1b[48;5;160m",
-    DarkRed: "\x1b[48;5;88m",
-    DarkCyan: "\x1b[48;5;36m",
-    Orange: "\x1b[48;5;208m",
-    Pink: "\x1b[48;5;200m",
-    Purple: "\x1b[48;5;129m",
-    Teal: "\x1b[48;5;30m",
-    Olive: "\x1b[48;5;58m",
-  },
-};
+export let buffer: string[] = [];
 
 enum OpCode {
   SET,
@@ -85,10 +13,11 @@ enum OpCode {
   JUMP,
   POINT,
   END,
-  SIGNAL,
-  MEMVIPE,
+  MEMWIPE,
   MEMDUMP,
   RETURN,
+  SCOPE,
+  SCOPE_END,
 }
 
 interface Instruction {
@@ -97,11 +26,29 @@ interface Instruction {
   line: number;
 }
 
-function variableCheck(variableName: string, line: number): number {
-  const variable = variableMemory.get(variableName);
+function variableCheck(
+  variableName: string,
+  line: number,
+  scopeLevel: number,
+): number {
+  let scopeMap = memory[scopeLevel];
+  let variable: number | undefined;
+  if (scopeMap === undefined) {
+    memory[scopeLevel] = new Map<string, number>();
+  } else {
+    variable = scopeMap.get(variableName);
+  }
+
   if (variable !== undefined) {
     return variable;
   } else {
+    // scope scan :3
+    for (let i = scopeLevel; i >= 0; i--) {
+      variable = memory[i].get(variableName);
+      if (variable !== undefined) {
+        return variable;
+      }
+    }
     let number = 0;
     try {
       number = Number(variableName);
@@ -142,7 +89,7 @@ export function compile(code: string): Instruction[] {
   const instructions: Instruction[] = [];
 
   for (let counter = 0; counter < lines.length; counter++) {
-    let line = lines[counter];
+    let line = lines[counter].trimLeft();
     if (line.trim() === "" || line.startsWith("//")) {
       continue;
     }
@@ -159,6 +106,7 @@ export function compile(code: string): Instruction[] {
 }
 
 export async function run(instructions: Instruction[]): Promise<number> {
+  let scopeLevel = 0;
   // collect jumpPoints
   for (let counter = 0; counter < instructions.length; counter++) {
     const instruction = instructions[counter];
@@ -172,9 +120,16 @@ export async function run(instructions: Instruction[]): Promise<number> {
     const instruction = instructions[counter];
     switch (instruction.operation) {
       case OpCode.SET: {
-        let variable = variableCheck(instruction.args[0], instruction.line);
+        let variable = variableCheck(
+          instruction.args[0],
+          instruction.line,
+          scopeLevel,
+        );
         if (variable !== undefined && !Number.isNaN(variable)) {
-          variableMemory.set(instruction.args[2], variable);
+          if (!memory[scopeLevel]) {
+            memory[scopeLevel] = new Map();
+          }
+          memory[scopeLevel].set(instruction.args[2], variable);
         } else {
           throw new Error("Invalid variable name at line " + instruction.line);
         }
@@ -182,13 +137,17 @@ export async function run(instructions: Instruction[]): Promise<number> {
       }
       case OpCode.PRINT: {
         const printArg = instruction.args[0];
-        const printVar = variableCheck(instruction.args[0], instruction.line);
+        const printVar = variableCheck(
+          instruction.args[0],
+          instruction.line,
+          scopeLevel,
+        );
         if (Number.isNaN(printVar)) {
           throw new Error(
             "Invalid print operation at line " + instruction.line,
           );
         } else {
-          console.log(printVar);
+          buffer.push(printVar.toString());
         }
         break;
       }
@@ -199,10 +158,12 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const argument2 = variableCheck(
               instructionArgs[2],
               instruction.line,
+              scopeLevel,
             );
             const mathOp = argument1 + argument2;
             if (Number.isNaN(mathOp)) {
@@ -216,10 +177,12 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const argument2 = variableCheck(
               instructionArgs[2],
               instruction.line,
+              scopeLevel,
             );
             const mathOp = argument1 - argument2;
             if (Number.isNaN(mathOp)) {
@@ -233,10 +196,12 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const argument2 = variableCheck(
               instructionArgs[2],
               instruction.line,
+              scopeLevel,
             );
             const mathOp = argument1 * argument2;
             if (Number.isNaN(mathOp)) {
@@ -250,10 +215,12 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const argument2 = variableCheck(
               instructionArgs[2],
               instruction.line,
+              scopeLevel,
             );
             const mathOp = argument1 / argument2;
             if (Number.isNaN(mathOp)) {
@@ -267,10 +234,12 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const argument2 = variableCheck(
               instructionArgs[2],
               instruction.line,
+              scopeLevel,
             );
             const mathOp = argument1 % argument2;
             if (Number.isNaN(mathOp)) {
@@ -284,10 +253,12 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const argument2 = variableCheck(
               instructionArgs[2],
               instruction.line,
+              scopeLevel,
             );
             const mathOp = Math.pow(argument1, argument2);
             if (Number.isNaN(mathOp)) {
@@ -301,6 +272,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const mathOp = Math.sqrt(argument1);
             if (Number.isNaN(mathOp)) {
@@ -314,6 +286,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const mathOp = Math.log(argument1);
             if (Number.isNaN(mathOp)) {
@@ -327,6 +300,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const mathOp = Math.random() * argument1;
             if (Number.isNaN(mathOp)) {
@@ -340,6 +314,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const mathOp = Math.floor(argument1);
             if (Number.isNaN(mathOp)) {
@@ -353,6 +328,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const mathOp = Math.ceil(argument1);
             if (Number.isNaN(mathOp)) {
@@ -366,6 +342,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const mathOp = Math.sin(argument1);
             if (Number.isNaN(mathOp)) {
@@ -391,10 +368,12 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const argument2 = variableCheck(
               instructionArgs[2],
               instruction.line,
+              scopeLevel,
             );
             const check = argument1 > argument2;
             if (Number.isNaN(argument1) || Number.isNaN(argument2)) {
@@ -415,10 +394,12 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const argument2 = variableCheck(
               instructionArgs[2],
               instruction.line,
+              scopeLevel,
             );
             const check = argument1 < argument2;
             if (Number.isNaN(argument1) || Number.isNaN(argument2)) {
@@ -439,10 +420,12 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const argument2 = variableCheck(
               instructionArgs[2],
               instruction.line,
+              scopeLevel,
             );
             const check = argument1 == argument2;
             if (Number.isNaN(argument1) || Number.isNaN(argument2)) {
@@ -463,10 +446,12 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const argument2 = variableCheck(
               instructionArgs[2],
               instruction.line,
+              scopeLevel,
             );
             const check = argument1 != argument2;
             if (Number.isNaN(argument1) || Number.isNaN(argument2)) {
@@ -487,10 +472,12 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const argument2 = variableCheck(
               instructionArgs[2],
               instruction.line,
+              scopeLevel,
             );
             const check = argument1 >= argument2;
             if (Number.isNaN(argument1) || Number.isNaN(argument2)) {
@@ -511,10 +498,12 @@ export async function run(instructions: Instruction[]): Promise<number> {
             const argument1 = variableCheck(
               instructionArgs[0],
               instruction.line,
+              scopeLevel,
             );
             const argument2 = variableCheck(
               instructionArgs[2],
               instruction.line,
+              scopeLevel,
             );
             const check = argument1 <= argument2;
             if (Number.isNaN(argument1) || Number.isNaN(argument2)) {
@@ -553,41 +542,32 @@ export async function run(instructions: Instruction[]): Promise<number> {
         }
         break;
       }
-      case OpCode.MEMVIPE: {
+      case OpCode.MEMWIPE: {
         variableMemory.clear();
-      }
-      case OpCode.SIGNAL: {
-        const signalCode = variableCheck(instruction.args[0], instruction.line);
-        if (signalMap && signalMap.has(signalCode)) {
-          console.log(signalMap.get(signalCode));
-        } else {
-          console.log(`[Signal ${signalCode}]`);
-        }
         break;
       }
       case OpCode.MEMDUMP: {
         const fixedLength = 24;
-        console.log(`>>> MEMORY DUMP (Line ${instruction.line} at ${new Date().toLocaleTimeString()} <<<`,);
+        buffer.push(
+          `>>> MEMORY DUMP (Line ${instruction.line} at ${new Date().toLocaleTimeString()} <<<`,
+        );
         for (const [key, value] of variableMemory.entries()) {
-          console.log(
-            `var ${key}: ${value}`,
-          );
+          buffer.push(`var ${key}: ${value}`);
         }
         for (const [key, value] of jumpPoints.entries()) {
-          console.log(
-            ` jump ${key}: ${value}`,
-          );
+          buffer.push(` jump ${key}: ${value}`);
         }
-        console.log(
+        buffer.push(
           `Iteration: ${counter} TotalVars: ${variableMemory.size} TotalJumps: ${jumpPoints.size} `,
         );
-        console.log(">>> End of MEMDUMP <<<")
+        buffer.push(">>> End of MEMDUMP <<<");
         break;
       }
       case OpCode.RETURN: {
         const argument1 = variableCheck(
           instruction.args[0],
           instruction.line,
+          scopeLevel,
         );
         if (Number.isNaN(argument1)) {
           throw new Error(
@@ -597,8 +577,16 @@ export async function run(instructions: Instruction[]): Promise<number> {
           return argument1;
         }
       }
+      case OpCode.SCOPE: {
+        scopeLevel++;
+        break;
+      }
+      case OpCode.SCOPE_END: {
+        scopeLevel--;
+        break;
+      }
       default:
-        console.log("Invalid operation");
+        buffer.push("Invalid operation");
         break;
     }
   }
@@ -608,4 +596,5 @@ export async function run(instructions: Instruction[]): Promise<number> {
 export function resetVM() {
   variableMemory.clear();
   jumpPoints.clear();
+  buffer = [];
 }
