@@ -1,7 +1,5 @@
 import { run, compile, resetVM, buffer } from "./runtime";
-
-let code: string = `
-// ===== VARIABLE OPERATIONS =====
+let code: string = `// ===== VARIABLE OPERATIONS =====
 SET 42 >> answer
 SET 100 >> initialValue
 SET initialValue >> copiedValue
@@ -37,10 +35,11 @@ PRINT sinResult
 
 // ===== CONTROL FLOW =====
 SET 0 >> counter
-POINT loop_start
-MATH counter + 1 >> counter
-PRINT counter
-IF counter < 5 >> loop_start
+PROC loop_start
+  MATH counter + 1 >> counter
+  PRINT counter
+  IF counter < 5 >> loop_start
+ENDPROC
 
 // ===== CONDITIONAL JUMPS =====
 SET 10 >> x
@@ -51,47 +50,34 @@ IF x < y >> less
 IF x == y >> equal
 JUMP comparisons_done
 
-POINT greater
-PRINT 9001
+PROC greater
+  PRINT 9001
+ENDPROC
 JUMP comparisons_done
 
-POINT less
-PRINT 9000
+PROC less
+  PRINT 9000
+ENDPROC
 JUMP comparisons_done
 
-POINT equal
-PRINT 9002
+PROC equal
+  PRINT 9002
+ENDPROC
 
-POINT comparisons_done
+PROC comparisons_done
+ENDPROC
 
-// Scope and Function Simulation with Tabs
-
-// ===== SCOPE TEST =====
-// Define a variable inside a scope
-SET 120 >> unscopedVar
-SCOPE
-  SET 500 >> scopedVar
-  PRINT unscopedVar
-  PRINT scopedVar
-SCOPE_END
-
-// Attempt to access the variable outside of its scope,
-// which should result in an error or undefined value.
-// PRINT scopedVar
-
-// ===== MEMORY OPERATIONS =====
-MEMDUMP
-MEMWIPE
-
-// ===== FUNCTION SIMULATION =====
+// ===== PROCEDURES =====
+// they elevate the memory layer and act as a registered jump point
 SET 5 >> factorial_input
 SET 1 >> factorial_result
 SET 1 >> factorial_counter
 
-POINT factorial_loop
-MATH factorial_result * factorial_counter >> factorial_result
-MATH factorial_counter + 1 >> factorial_counter
-IF factorial_counter <= factorial_input >> factorial_loop
+PROC factorial_loop
+  MATH factorial_result * factorial_counter >> factorial_result
+  MATH factorial_counter + 1 >> factorial_counter
+  IF factorial_counter <= factorial_input >> factorial_loop
+ENDPROC
 
 PRINT factorial_result
 
@@ -101,8 +87,7 @@ RETURN returnValue
 
 // ===== END (unreachable due to return) =====
 END
-PRINT 999999 // This won't execute
-`;
+PRINT 999999 // This won't execute`;
 
 const kebab = await run(compile(code));
 

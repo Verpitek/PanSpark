@@ -1,7 +1,7 @@
-export let variableMemory: Map<string, number> = new Map();
-export let jumpPoints: Map<string, number> = new Map();
 
-export let memory: Map<string, number>[] = [variableMemory];
+export let procPoints: Map<string, number> = new Map();
+
+export let memory: Map<string, number>[] = [new Map<string, number>()];
 
 export let buffer: string[] = [];
 
@@ -11,13 +11,10 @@ enum OpCode {
   PRINT,
   IF,
   JUMP,
-  POINT,
   END,
-  MEMWIPE,
-  MEMDUMP,
   RETURN,
-  SCOPE,
-  SCOPE_END,
+  PROC,
+  ENDPROC,
 }
 
 interface Instruction {
@@ -26,59 +23,58 @@ interface Instruction {
   line: number;
 }
 
+function setVariableMemory(variableName: string, value: number, scopeLevel: number) {
+  for (let i = scopeLevel; i >= 0; i--) {
+    const scope = memory[i];
+    if (scope && scope.has(variableName)) {
+      scope.set(variableName, value);
+      return;
+    }
+  }
+  if (memory[scopeLevel] === undefined) {
+    memory[scopeLevel] = new Map<string, number>();
+  }
+  memory[scopeLevel].set(variableName, value);
+}
+
 function variableCheck(
   variableName: string,
   line: number,
   scopeLevel: number,
 ): number {
-  let scopeMap = memory[scopeLevel];
-  let variable: number | undefined;
-  if (scopeMap === undefined) {
-    memory[scopeLevel] = new Map<string, number>();
-  } else {
-    variable = scopeMap.get(variableName);
+  // Check if variable exists in any scope
+  for (let i = scopeLevel; i >= 0; i--) {
+    const scope = memory[i];
+    if (scope && scope.has(variableName)) {
+      return scope.get(variableName)!;
+    }
   }
 
-  if (variable !== undefined) {
-    return variable;
-  } else {
-    // scope scan :3
-    for (let i = scopeLevel; i >= 0; i--) {
-      variable = memory[i].get(variableName);
-      if (variable !== undefined) {
-        return variable;
-      }
-    }
-    let number = 0;
-    try {
-      number = Number(variableName);
-    } catch (error) {
-      throw new Error(
-        "variable " + variableName + " is not a number at line " + line,
-      );
-      return 0;
-    }
-    return number;
+  const numericValue = Number(variableName);
+  if (!isNaN(numericValue)) {
+    return numericValue;
   }
+
+  throw new Error(`Variable "${variableName}" is not defined at line ${line}`);
 }
 
-function jumpPointCheck(
-  jumpPointName: string,
+function procPointCheck(
+  procPointName: string,
   line: number,
 ): [boolean, number] {
-  if (jumpPoints.has(jumpPointName)) {
-    const jumpPoint = jumpPoints.get(jumpPointName);
-    if (jumpPoint != undefined) {
-      return [true, jumpPoint];
+  if (procPoints.has(procPointName)) {
+    const procPoint = procPoints.get(procPointName);
+    if (procPoint != undefined) {
+      return [true, procPoint];
     } else {
       throw new Error(
-        "jump point " + jumpPointName + " is not defined at line " + line,
+        "proc point " + procPointName + " is not defined at line " + line,
       );
       return [false, 0];
     }
   } else {
     throw new Error(
-      "jump point " + jumpPointName + " is not defined at line " + line,
+      "proc point " + procPointName + " is not defined at line " + line,
     );
     return [false, 0];
   }
@@ -107,15 +103,14 @@ export function compile(code: string): Instruction[] {
 
 export async function run(instructions: Instruction[]): Promise<number> {
   let scopeLevel = 0;
-  // collect jumpPoints
+  // collect procPoints
   for (let counter = 0; counter < instructions.length; counter++) {
     const instruction = instructions[counter];
-    if (instruction.operation === OpCode.POINT) {
-      jumpPoints.set(instruction.args[0], counter);
+    if (instruction.operation === OpCode.PROC) {
+      procPoints.set(instruction.args[0], counter);
     }
   }
-
-  // Parse and run the code
+  
   codeloop: for (let counter = 0; counter < instructions.length; counter++) {
     const instruction = instructions[counter];
     switch (instruction.operation) {
@@ -169,7 +164,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             if (Number.isNaN(mathOp)) {
               throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(instructionArgs[4], argument1 + argument2);
+              setVariableMemory(instructionArgs[4], argument1 + argument2, scopeLevel);
             }
             break;
           }
@@ -188,7 +183,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             if (Number.isNaN(mathOp)) {
               throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(instructionArgs[4], mathOp);
+              setVariableMemory(instructionArgs[4], mathOp, scopeLevel);
             }
             break;
           }
@@ -207,7 +202,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             if (Number.isNaN(mathOp)) {
               throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(instructionArgs[4], mathOp);
+              setVariableMemory(instructionArgs[4], mathOp, scopeLevel);
             }
             break;
           }
@@ -226,7 +221,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             if (Number.isNaN(mathOp)) {
               throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(instructionArgs[4], mathOp);
+              setVariableMemory(instructionArgs[4], mathOp, scopeLevel);
             }
             break;
           }
@@ -245,7 +240,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             if (Number.isNaN(mathOp)) {
               throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(instructionArgs[4], mathOp);
+              setVariableMemory(instructionArgs[4], mathOp, scopeLevel);
             }
             break;
           }
@@ -264,7 +259,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             if (Number.isNaN(mathOp)) {
               throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(instructionArgs[4], mathOp);
+              setVariableMemory(instructionArgs[4], mathOp, scopeLevel);
             }
             break;
           }
@@ -278,7 +273,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             if (Number.isNaN(mathOp)) {
               throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(instructionArgs[3], mathOp);
+              setVariableMemory(instructionArgs[3], mathOp, scopeLevel);
             }
             break;
           }
@@ -292,7 +287,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             if (Number.isNaN(mathOp)) {
               throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(instructionArgs[3], mathOp);
+              setVariableMemory(instructionArgs[3], mathOp, scopeLevel);
             }
             break;
           }
@@ -306,7 +301,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             if (Number.isNaN(mathOp)) {
               throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(instructionArgs[3], mathOp);
+              setVariableMemory(instructionArgs[3], mathOp, scopeLevel);
             }
             break;
           }
@@ -320,7 +315,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             if (Number.isNaN(mathOp)) {
               throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(instructionArgs[3], mathOp);
+              setVariableMemory(instructionArgs[3], mathOp, scopeLevel);
             }
             break;
           }
@@ -334,7 +329,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             if (Number.isNaN(mathOp)) {
               throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(instructionArgs[3], mathOp);
+              setVariableMemory(instructionArgs[3], mathOp, scopeLevel);
             }
             break;
           }
@@ -348,7 +343,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
             if (Number.isNaN(mathOp)) {
               throw new Error("Invalid operation at line " + instruction.line);
             } else {
-              variableMemory.set(instructionArgs[3], mathOp);
+              setVariableMemory(instructionArgs[3], mathOp, scopeLevel);
             }
             break;
           }
@@ -382,9 +377,9 @@ export async function run(instructions: Instruction[]): Promise<number> {
               );
             } else {
               if (check) {
-                const jumpPoint = jumpPointCheck(instructionArgs[4], counter);
-                if (jumpPoint[0] === true) {
-                  counter = jumpPoint[1];
+                const procPoint = procPointCheck(instructionArgs[4], counter);
+                if (procPoint[0] === true) {
+                  counter = procPoint[1] - 1;
                 }
               }
             }
@@ -408,9 +403,9 @@ export async function run(instructions: Instruction[]): Promise<number> {
               );
             } else {
               if (check) {
-                const jumpPoint = jumpPointCheck(instructionArgs[4], counter);
-                if (jumpPoint[0] === true) {
-                  counter = jumpPoint[1];
+                const procPoint = procPointCheck(instructionArgs[4], counter);
+                if (procPoint[0] === true) {
+                  counter = procPoint[1] - 1;
                 }
               }
             }
@@ -434,9 +429,9 @@ export async function run(instructions: Instruction[]): Promise<number> {
               );
             } else {
               if (check) {
-                const jumpPoint = jumpPointCheck(instructionArgs[4], counter);
-                if (jumpPoint[0] === true) {
-                  counter = jumpPoint[1];
+                const procPoint = procPointCheck(instructionArgs[4], counter);
+                if (procPoint[0] === true) {
+                  counter = procPoint[1] - 1;
                 }
               }
             }
@@ -460,9 +455,9 @@ export async function run(instructions: Instruction[]): Promise<number> {
               );
             } else {
               if (check) {
-                const jumpPoint = jumpPointCheck(instructionArgs[4], counter);
-                if (jumpPoint[0] === true) {
-                  counter = jumpPoint[1];
+                const procPoint = procPointCheck(instructionArgs[4], counter);
+                if (procPoint[0] === true) {
+                  counter = procPoint[1] - 1;
                 }
               }
             }
@@ -486,9 +481,9 @@ export async function run(instructions: Instruction[]): Promise<number> {
               );
             } else {
               if (check) {
-                const jumpPoint = jumpPointCheck(instructionArgs[4], counter);
-                if (jumpPoint[0] === true) {
-                  counter = jumpPoint[1];
+                const procPoint = procPointCheck(instructionArgs[4], counter);
+                if (procPoint[0] === true) {
+                  counter = procPoint[1] - 1;
                 }
               }
             }
@@ -512,9 +507,9 @@ export async function run(instructions: Instruction[]): Promise<number> {
               );
             } else {
               if (check) {
-                const jumpPoint = jumpPointCheck(instructionArgs[4], counter);
-                if (jumpPoint[0] === true) {
-                  counter = jumpPoint[1];
+                const procPoint = procPointCheck(instructionArgs[4], counter);
+                if (procPoint[0] === true) {
+                  counter = procPoint[1] - 1;
                 }
               }
             }
@@ -529,38 +524,14 @@ export async function run(instructions: Instruction[]): Promise<number> {
         }
         break;
       }
-      case OpCode.POINT: {
-        break;
-      }
       case OpCode.END: {
         break codeloop;
       }
       case OpCode.JUMP: {
-        const jumpPoint = jumpPointCheck(instruction.args[0], counter);
-        if (jumpPoint[0] === true) {
-          counter = jumpPoint[1];
+        const procPoint = procPointCheck(instruction.args[0], counter);
+        if (procPoint[0] === true) {
+          counter = procPoint[1] - 1;
         }
-        break;
-      }
-      case OpCode.MEMWIPE: {
-        variableMemory.clear();
-        break;
-      }
-      case OpCode.MEMDUMP: {
-        const fixedLength = 24;
-        buffer.push(
-          `>>> MEMORY DUMP (Line ${instruction.line} at ${new Date().toLocaleTimeString()} <<<`,
-        );
-        for (const [key, value] of variableMemory.entries()) {
-          buffer.push(`var ${key}: ${value}`);
-        }
-        for (const [key, value] of jumpPoints.entries()) {
-          buffer.push(` jump ${key}: ${value}`);
-        }
-        buffer.push(
-          `Iteration: ${counter} TotalVars: ${variableMemory.size} TotalJumps: ${jumpPoints.size} `,
-        );
-        buffer.push(">>> End of MEMDUMP <<<");
         break;
       }
       case OpCode.RETURN: {
@@ -577,11 +548,11 @@ export async function run(instructions: Instruction[]): Promise<number> {
           return argument1;
         }
       }
-      case OpCode.SCOPE: {
+      case OpCode.PROC: {
         scopeLevel++;
         break;
       }
-      case OpCode.SCOPE_END: {
+      case OpCode.ENDPROC: {
         scopeLevel--;
         break;
       }
@@ -594,7 +565,7 @@ export async function run(instructions: Instruction[]): Promise<number> {
 }
 
 export function resetVM() {
-  variableMemory.clear();
-  jumpPoints.clear();
+  memory = [new Map<string, number>()];
+  procPoints.clear();
   buffer = [];
 }
