@@ -549,11 +549,11 @@ export async function run(instructions: Instruction[]): Promise<number> {
         }
       }
       case OpCode.PROC: {
-        scopeLevel++;
+        scopeLevel = 1;
         break;
       }
       case OpCode.ENDPROC: {
-        scopeLevel--;
+        scopeLevel = 0;
         break;
       }
       default:
