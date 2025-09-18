@@ -24,6 +24,7 @@ enum OpCode {
   SET,
   MATH,
   PRINT,
+  ECHO,
   IF,
   JUMP,
   END,
@@ -97,15 +98,20 @@ export function compile(code: string): Instruction[] {
     if (line === "" || line.startsWith("//")) {
       continue;
     }
-    const regex = /\s*>>\s*(\S+)|\(([^)]*)\)|(\S+)/g;
+    const regex = /"([^"]*)"|\s*>>\s*(\S+)|\(([^)]*)\)|(\S+)/g;
     let tokens = [];
     let match;
     while ((match = regex.exec(line)) !== null) {
-      if(match[1]) {
-        tokens.push(">>", match[1]);
-      } else {
-        tokens.push(match[2] || match[3]);
-      }
+        if (match[1] !== undefined) {
+            // Handle double-quoted string
+            tokens.push(match[1]);
+        } else if (match[2] !== undefined) {
+            // Handle >> symbol with its argument
+            tokens.push(">>", match[2]);
+        } else {
+            // Handle parentheses content or regular token
+            tokens.push(match[3] || match[4]);
+        }
     }
   
     let operation = OpCode[tokens[0].toUpperCase() as keyof typeof OpCode];
@@ -159,10 +165,10 @@ export function* run(instructions: Instruction[]) {
     switch (instruction.operation) {
       case OpCode.SET: {
         const value = variableCheck(
-          instruction.args[2],
+          instruction.args[0],
           instruction.line,
         );
-        setVariableMemory(instruction.args[0], value);
+        setVariableMemory(instruction.args[2], value);
         break;
       }
       case OpCode.PRINT: {
@@ -178,6 +184,11 @@ export function* run(instructions: Instruction[]) {
         } else {
           buffer.push(printVar.toString());
         }
+        break;
+      }
+      case OpCode.ECHO: {
+        const echoArg = instruction.args[0];
+        buffer.push(echoArg.toString());
         break;
       }
       case OpCode.MATH: {
