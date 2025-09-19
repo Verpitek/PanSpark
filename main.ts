@@ -1,4 +1,6 @@
-import { run, compile, resetVM, buffer } from "./runtime";
+import { run, compile, resetVM, buffer } from "./panspark";
+import "./custom_opcodes";
+
 let code: string = `  
 // ===== VARIABLE OPERATIONS =====
 SET 42 >> answer
@@ -95,7 +97,6 @@ CALL factorial (5) >> factorial_output
 // Print the final result
 PRINT factorial_output
 ECHO "program execution complete!"
-
 
 // ===== END PROGRAM EXECUTION =====
 END
