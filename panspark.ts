@@ -5,11 +5,11 @@ enum OpCode {
   MATH,
   PRINT,
   ECHO,
-  IF,
+  POINT,
   JUMP,
+  IF,
   END,
   RETURN,
-  POINT,
   CALL,
   PROC,
   WAIT,
@@ -449,7 +449,7 @@ export class PanSparkVM {
           case OpCode.WAIT: {
             const instructionArgs = instruction.args;
             if (instructionArgs[0]) {
-              this.waitTicks = parseInt(instructionArgs[0], 10);
+              this.waitTicks = this.variableCheck(instructionArgs[0], instruction.line);
             }
             break;
           }
