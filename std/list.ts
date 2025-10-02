@@ -28,7 +28,6 @@ export function registerWith(vm: PanSparkVM) {
       listMemory.set(args[2], []);
     }
   });
-
   // LIST_GET <listName> <index> >> <varName>
   vm.registerOpCode("LIST_GET", (args, context) => {
     if (args.length !== 4 || args[2] !== ">>") {

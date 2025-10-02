@@ -30,6 +30,7 @@ interface Instruction {
 }
 
 export interface InterpreterContext {
+  buffer: string[];
   variableMemory: Map<string, number>;
   procVariableMemory: Map<string, number>;
   procLock: boolean;
@@ -220,6 +221,7 @@ export class PanSparkVM {
         if (handler) {
           // Create the context object to pass to the handler
           const context: InterpreterContext = {
+            buffer: this.buffer,
             variableMemory: this.variableMemory,
             procVariableMemory: this.procVariableMemory,
             procLock: this.procLock,

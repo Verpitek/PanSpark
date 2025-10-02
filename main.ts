@@ -10,7 +10,9 @@ console.log("=== VM1 Execution ===");
 
 // Load the list module before compilation
 import * as listModule from './std/list';
+import * as evalModule from './std/eval';
 vm1.loadModule('list', listModule);
+vm1.loadModule('eval', evalModule);
 
 let code1: string = `
   // ===== MODULE IMPORTS =====
@@ -274,10 +276,14 @@ let code1: string = `
   // ===== END PROGRAM EXECUTION =====
   END`;
 
-const program1 = vm1.run(vm1.compile(code1));
+const code2 = `
+EVAL "Date.now()" >> num1
+PRINT num1
+`;
+
+const program1 = vm1.run(vm1.compile(code2));
 
 while (program1.next().done === false) {
-  // Keep running until complete
 }
 
 // Display VM1 output
