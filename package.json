@@ -1,5 +1,14 @@
 {
-  "dependencies": {
-    "@minecraft/server": "^2.1.0"
-  }
+  "name": "panspark",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "description": "PanSpark scripting language",
+  "main": "dist/index.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Verpitek/PanSpark.git"
+  },
+  "author": "Verpitek",
+  "license": "Apache-2.0"
 }
