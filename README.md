@@ -1,4 +1,4 @@
-![logo][http://dev.verpitek.com:3000/_app/immutable/assets/favicon.CBf7ROhx.png]
+![logo](http://dev.verpitek.com:3000/_app/immutable/assets/favicon.CBf7ROhx.png)
 # PanSpark
 
 A tick-based interpreted OpCode scripting language designed for predictable performance and ease of parsing.
