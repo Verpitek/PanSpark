@@ -9,6 +9,9 @@
     "type": "git",
     "url": "https://github.com/Verpitek/PanSpark.git"
   },
+  "publishConfig": {
+      "access": "public"
+  },
   "author": "Verpitek",
   "license": "Apache-2.0",
   "devDependencies": {
