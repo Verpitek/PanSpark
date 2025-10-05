@@ -1,24 +1,22 @@
 {
   "name": "panspark",
-  "version": "1.1.0",
+  "version": "0.0.1",
+  "description": "PanSpark scripting language runtime",
+  "main": "build/panspark.js",
   "type": "module",
-  "private": false,
-  "description": "PanSpark scripting language",
-  "main": "dist/index.js",
+  "license": "MIT",
+  "keywords": ["panspark", "scripting", "minecraft"],
+  "files": [
+    "build/panspark.js"
+  ],
+  "scripts": {
+    "build": "bun build panspark.ts --minify --outdir build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Verpitek/PanSpark.git"
-  },
-  "publishConfig": {
-      "access": "public"
-  },
-  "author": "Verpitek",
-  "license": "Apache-2.0",
-  "devDependencies": {
-    "@semantic-release/changelog": "^6.0.3",
-    "@semantic-release/git": "^10.0.1",
-    "@semantic-release/github": "^11.0.6",
-    "@semantic-release/npm": "^12.0.2",
-    "semantic-release": "^24.2.9"
   }
 }
