@@ -1,0 +1,35 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*.*.*" # Only run when you push version tags
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build with Bun
+        run: bun build panspark.ts --minify --outdir dist
+
+      # Optionally copy the main file to package root or modify package.json before publish
+      - name: Prepare package
+        run: |
+          cp dist/* .
+          echo "✅ Prepared package for publish"
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm publish --access public
