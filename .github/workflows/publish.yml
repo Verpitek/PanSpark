@@ -1,17 +1,23 @@
-name: Publish
+name: Build, Version, and Release
 
 on:
   push:
-    tags:
-      - "v*.*.*" # Only run when you push version tags
+    branches:
+      - main
+
+permissions:
+  contents: write   # needed for creating GitHub releases
+  packages: write   # for npm publishing
 
 jobs:
-  build-and-publish:
+  release:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # needed so semantic-release can analyze commit history
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
@@ -22,14 +28,20 @@ jobs:
       - name: Build with Bun
         run: bun build panspark.ts --minify --outdir dist
 
-      # Optionally copy the main file to package root or modify package.json before publish
-      - name: Prepare package
-        run: |
-          cp dist/* .
-          echo "✅ Prepared package for publish"
+      - name: Copy build artifacts
+        run: cp -r dist/* .
 
-      - name: Publish to npm
+      - name: Setup Node (for npm publishing)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org/"
+
+      - name: Install Semantic Release
+        run: bun add -D semantic-release @semantic-release/git @semantic-release/changelog @semantic-release/npm @semantic-release/github
+
+      - name: Run Semantic Release
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          npm publish --access public
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npx semantic-release
