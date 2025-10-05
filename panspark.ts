@@ -11,9 +11,9 @@ type Variable =
   | { type: PanSparkType.String; value: string }
   | { type: PanSparkType.List; value: number[] };
   
-const Num = (value: number): Variable => ({ type: PanSparkType.Number, value });
-const Str = (value: string): Variable => ({ type: PanSparkType.String, value });
-const List = (value: number[]): Variable => ({ type: PanSparkType.List, value });
+export const Num = (value: number): Variable => ({ type: PanSparkType.Number, value });
+export const Str = (value: string): Variable => ({ type: PanSparkType.String, value });
+export const List = (value: number[]): Variable => ({ type: PanSparkType.List, value });
 
 enum OpCode {
   SET,
@@ -36,6 +36,12 @@ enum OpCode {
   TICK,
   IMPORT,
   "}",
+  
+  LIST_CREATE,
+  LIST_SET,
+  LIST_GET,
+  LIST_PUSH,
+  LIST_SORT
 }
 
 // Optimization: Pre-compiled instruction with resolved indices
@@ -456,8 +462,16 @@ export class PanSparkVM {
       } else {
         switch (instruction.operation) {
           case OpCode.SET: {
-            const value = this.variableCheck(instruction.args[0], instruction.line);
-            this.setVariableMemory(instruction.args[2], value);
+            if (instruction.args.length === 1) {
+              if (isNaN(Number(instruction.args[0]))) {
+                this.setVariableMemory(instruction.args[0], Num(0));
+              } else {
+                throw new Error(`Invalid variable name '${instruction.args[0]}' at line ${instruction.line}`);
+              }
+            } else {
+              const value = this.variableCheck(instruction.args[1], instruction.line);
+              this.setVariableMemory(instruction.args[0], value);
+            }
             break;
           }
           case OpCode.INC: {
@@ -476,6 +490,27 @@ export class PanSparkVM {
             }
             
             this.setVariableMemory(instruction.args[0], Num(decValue.value - 1));
+            break;
+          }
+          case OpCode.LIST_CREATE: {
+            const list: number[] = [];
+            this.setVariableMemory(instruction.args[0], List(list));
+            break;
+          }
+          case OpCode.LIST_PUSH: {
+            console.log(instruction.args)
+            const list = this.variableCheck(instruction.args[0], instruction.line);
+            const value = this.variableCheck(instruction.args[1], instruction.line);
+            
+            if (list.type !== PanSparkType.List) {
+              throw new Error(`The provided variable is not a list at line ${instruction.line}`)
+            }
+            if (value.type !== PanSparkType.Number) {
+              throw new Error(`The provided value is not a number at line ${instruction.line}`)
+            }
+            
+            list.value.push(value.value);
+            this.setVariableMemory(instruction.args[0], list);
             break;
           }
           case OpCode.FREE: {
