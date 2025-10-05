@@ -1,172 +1,157 @@
-Welcome to the PanSpark acripting language
-By design it is a tick based interpreted OpCode scripting language
-Every line of code in the PansPark language only executes 1 operation, which makes it have predictable performance and somewhat easier to understand and parse
+# PanSpark
 
-the syntax of PanSpark is somewhat strict and specific, but this allows for once again... faster parsing and higher speed
+A tick-based interpreted OpCode scripting language designed for predictable performance and ease of parsing.
 
-PanSpark itself has only one type, that being the JavaScript `Number` type
+![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
+![TypeScript](https://img.shields.io/badge/typescript-%23007ACC.svg?logo=typescript&logoColor=white)
+![Status](https://img.shields.io/badge/status-active-success.svg)
 
-Also last bit, the `>>` means piping or moving of data, so things like `SET 10 >> num1` would mean moving 10 to variable with name `num`
+## Features
 
-PanSpark itself does not print anything itself, and saves everything to a buffer, that can be printed out after a program finishes running
+- **One Operation Per Line**: Predictable execution model with strict syntax
+- **High Performance**: Pre-compiled instructions and optimized execution
+- **Extensible**: Easy-to-create custom OpCodes via module system
+- **Built-in Types**: Numbers, Strings, and Lists with comprehensive operations
+- **Procedures**: Isolated memory scopes with parameter passing and return values
+- **Detailed Error Handling**: Clear error messages with line numbers
+- **Memory Management**: Manual virtual memory control with `FREE` operation
+- **List Operations**: Create, manipulate, and sort lists of numbers
 
-# OpCodes
-### `SET`: allows you to set a variable from a `Number` or a an existing variable.
-  Syntax:
-  `SET (Number/variable) >> <variable>`
-  Example usage: 
-  `SET 10 >> num1` or `SET num1 >> result`
+## Getting Started
 
- ### `MATH`: allows to do math operations
-  Syntax:
-  `MATH (Number/variable) (operator) (Number/variable) >> (variable)`
-  or if the operator is used with a single argument
-  `MATH (Number/variable) (operator) >> (variable)`
-  if the operator is used with a single argument
-  
-  Available operators:
-  two argument operators `+ - * / % ** min max`
-  single argument operators `sqrt log floor ceil sin rand cos tan abs round log10 exp`
-  Example usage:
-  `MATH 10 + 20 >> result` or `MATH num1 * num2 >> result` or `MATH num1 ceil >> result`
-  
-  ### `PRINT`: allows printing of variables or Numbers
-  Syntax:
-  `PRINT (Number/variable)`
-  
-  Example usage:
-  `PRINT 10` or `PRINT result`
-  
-  ### `ECHO`: allows printing string based messages
-  Syntax:
-  `ECHO "(text)"`
-  
-  Example usage:
-  `ECHO "Hello World!"`
-  
-  ### `POINT`: allows setting a set location within the code
-  Syntax:
-  `POINT (name)`
-  
-  Example usage:
-  `POINT loop` or `POINT something`
-  
-  ### `JUMP`: allows jumping to an existing point
-  Syntax
-  `JUMP (name)`
-  
-  Example usage:
-  `JUMP loop` or `JUMP something`
-  
-  ### `IF`: allows conditional jumping to points
-  Syntax:
-  `IF (Number/variable) (operator) (Number/variable) >> (point)`
-  
-  Available operators:
-  `> < == != >= <=`
-  
-  Example usage:
-  `IF 5 < 10 >> loop` or `IF num1 == num2 >> something`
-  
-  ### `END` ends the program
-  Syntax and Example usage:
-  `END`
-  
-  ### `PROC` allows to define a procedure, which has its isolated memory layer
-  Syntax:
-  ```
-  PROC (name) ( (variables seperated by ,) ) {
-  }
-  ```
-  P.S. the name has to be seperated from the argument (), and the shown way is the only way to write a PROC using squiggly brackets.
-  PROC's cannot be jump outside of, since it runs on a seperate memory layer, this can cause `out of scope` issues
-  Arguments that are in the PROC's definition can be used within the PROC
-  
-  Example Usage:
-  ```
-  PROC add (a, b) {
-    MATH a + b >> result
-    RETURN result
-  }
-  ```
+### Basic Usage
 
-  ### `RETURN` returns a value from a procedure
-  Syntax:
-  `RETURN (Number/variable)`
-  
-  Example usage:
-  ```
-  PROC add (a, b) {
-    MATH a + b >> result
-    RETURN result
-  }
-  ```
-  ### `CALL` allows to call a procedure
-  Syntax:
-  `CALL (PROC name) ( (arguments) ) >> (variable)`
-  
-  Example usage:
-  ```
-  CALL add (1, 3) >> result
-  ```
-  ### `WAIT` allows to wait for a specific amount of ticks
-  Syntax:
-  `WAIT (Number/variable)`
+```typescript
+import { PanSparkVM } from "./panspark";
 
-  Example usage:
-  `WAIT 100` or `WAIT num1`
-  ### `INC`: increments a variable by 1
-  Syntax:
-  `INC (variable)`
-  Example usage:
-  `INC num1`
-  ### `DEC`: decreases a variable by 1
-  Syntax:
-  `DEC (variable)
-  Example usage:
-  `DEC num1`
-  ### `FREE`: frees a variable from memory
-  Syntax:
-  `FREE (variable)`
-  Example usage:
-  `FREE num1`
-  ### `NOP`: No operation instruction, does nothing
-  Syntax and Example usage:
-  `NOP`
-  ### `MEMDUMP`: dumps all available variable memory
-  Syntax and Example usage:
-  `MEMDUMP`
-  ### `TICK` allows to save the current tick to a variable
-  Syntax:
-  `TICK (variable)`
-  Example usage:
-  `TICK num1`
-  ### `IMPORT`: allows to import custom OpCodes
-  Syntax:
-  `IMPORT "(name)"`
-  Example usage:
-  `IMPORT "list"`
+const vm1 = new PanSparkVM();
+
+let code: string = `
+SET 10 >> num1
+SET 20 >> num2
+SET result
+MATH num1 + num2 >> result
+PRINT result`;
+
+const program1 = vm1.run(vm1.compile(code));
+
+while (program1.next().done === false) {
+}
+
+for (let line of vm1.buffer) {
+  console.log(line);
+}
+```
+
+## Language Overview
+
+PanSpark uses a simple, readable syntax where each line performs exactly one operation:
+
+```panspark
+// Variables
+SET 10 >> x
+SET y        // Defaults to 0
+
+// Math operations
+MATH x + 20 >> result
+MATH result sqrt >> root
+
+// Control flow
+IF x > 5 >> do_something
+JUMP end
+
+POINT do_something
+ECHO "x is greater than 5"
+
+POINT end
+END
+```
+
+### Working with Lists
+
+```panspark
+// Create and populate a list
+LIST_CREATE numbers
+LIST_PUSH 30 >> numbers
+LIST_PUSH 10 >> numbers
+LIST_PUSH 20 >> numbers
+
+// Sort and access
+LIST_SORT numbers min  // Sort ascending
+LIST_GET numbers 0 >> smallest
+PRINT smallest  // outputs: 10
+```
+
+### Procedures
+
+```panspark
+PROC factorial (n) {
+  IF n <= 1 >> base_case
+  MATH n - 1 >> n_minus_1
+  CALL factorial (n_minus_1) >> result
+  MATH n * result >> final
+  RETURN final
   
-  
-  
-  # Creating new OpCodes
-  
-  in the `/std/list.ts` file there is an example library that shows how to register OpCodes
-  
-  the only thing that is worth more interest is this line of code
-  `vm.registerOpCode("LIST_CREATE", (args, context) => {`
-  `"LIST_CREATE"` here represents a custom OpCode name, that you can define yourself
-  `args` gives you the arguments from the custom OpCode
-  `context` gives you access to the interpreter context, which allows you to directly check or edit memory and other things based on the interface below
-  ```js
-  export interface InterpreterContext {
-    variableMemory: Map<string, number>;
-    procVariableMemory: Map<string, number>;
-    procLock: boolean;
-    getVar: (name: string, line: number) => number;
-    setVar: (name: string, value: number) => void;
-  }
-  ```
-  
-  # Running PanSpark
-  you can find examples of how to run PanSpark inside the `main.ts` file
+  POINT base_case
+  RETURN 1
+}
+
+CALL factorial (5) >> result
+PRINT result  // outputs: 120
+```
+
+## Core OpCodes
+
+| OpCode | Description | Example |
+|--------|-------------|---------|
+| `SET` | Assign variable | `SET 10 >> x` or `SET x` |
+| `MATH` | Math operations | `MATH x + y >> result` |
+| `PRINT` | Output number/variable | `PRINT result` |
+| `ECHO` | Output string | `ECHO "Hello"` |
+| `IF` | Conditional jump | `IF x > 10 >> label` |
+| `JUMP` | Unconditional jump | `JUMP start` |
+| `POINT` | Define jump target | `POINT start` |
+| `PROC` | Define procedure | `PROC add (a, b) { ... }` |
+| `CALL` | Call procedure | `CALL add (1, 2) >> sum` |
+| `LIST_*` | List operations | `LIST_PUSH 10 >> mylist` |
+
+## Creating Custom OpCodes
+
+Extend PanSpark with your own operations:
+
+```typescript
+// mymodule.ts
+import { PanSparkVM } from 'panspark';
+
+export function registerWith(vm: PanSparkVM): void {
+  vm.registerOpCode("DOUBLE", (args, context) => {
+    const inputVar = context.getVar(args[0], 0);
+    if (inputVar.type === PanSparkType.Number) {
+      const doubled = Num(inputVar.value * 2);
+      context.setVar(args[2], doubled);
+    }
+  });
+}
+```
+
+Use in PanSpark:
+```panspark
+IMPORT "mymodule"
+SET 5 >> x
+DOUBLE x >> result
+PRINT result  // outputs: 10
+```
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+## Acknowledgments
+
+- Inspired by the Sparc asm, BASIC and esoteric languages
+- Built with TypeScript to save the people working on it from insanity
+- Designed for educational purposes and embedded scripting scenarios
+
+---
+
+<p align="center">Made with insanity and sillyness by Verpitek</p>
