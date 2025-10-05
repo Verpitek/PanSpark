@@ -6,8 +6,11 @@ on:
       - main
 
 permissions:
-  contents: write   # needed for creating GitHub releases
-  packages: write   # for npm publishing
+  contents: write
+  issues: write
+  pull-requests: write
+  packages: write
+
 
 jobs:
   release:
