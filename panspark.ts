@@ -470,8 +470,8 @@ export class PanSparkVM {
                 throw new Error(`Invalid variable name '${instruction.args[0]}' at line ${instruction.line}`);
               }
             } else {
-              const value = this.variableCheck(instruction.args[1], instruction.line);
-              this.setVariableMemory(instruction.args[0], value);
+              const value = this.variableCheck(instruction.args[0], instruction.line);
+              this.setVariableMemory(instruction.args[2], value);
             }
             break;
           }
