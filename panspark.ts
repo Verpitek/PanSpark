@@ -1,6 +1,6 @@
 export type OpCodeHandler = (args: string[], context: InterpreterContext) => void;
 
-// yep
+// :3
 enum PanSparkType {
   Number,
   String,
