@@ -1,0 +1,39 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"  # Trigger on version tags like v1.0.0
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout the repo
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Setup Bun
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      # 3. Install dependencies
+      - name: Install dependencies
+        run: bun install
+
+      # 4. Build the project as a single JS file
+      - name: Build panspark.ts
+        run: |
+          mkdir -p dist
+          bun build panspark.ts --minify --outfile dist/panspark.js
+
+      # 5. Create GitHub Release with the compiled JS
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          files: dist/panspark.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
