@@ -1,4 +1,4 @@
-name: Build with Bun
+name: Build
 
 on:
   push:
@@ -26,5 +26,5 @@ jobs:
       - name: Upload dist folder as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: panspark-dist
+          name: dist
           path: dist/
