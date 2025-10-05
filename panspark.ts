@@ -498,9 +498,8 @@ export class PanSparkVM {
             break;
           }
           case OpCode.LIST_PUSH: {
-            console.log(instruction.args)
-            const list = this.variableCheck(instruction.args[0], instruction.line);
-            const value = this.variableCheck(instruction.args[1], instruction.line);
+            const list = this.variableCheck(instruction.args[2], instruction.line);
+            const value = this.variableCheck(instruction.args[0], instruction.line);
             
             if (list.type !== PanSparkType.List) {
               throw new Error(`The provided variable is not a list at line ${instruction.line}`)
@@ -510,7 +509,62 @@ export class PanSparkVM {
             }
             
             list.value.push(value.value);
-            this.setVariableMemory(instruction.args[0], list);
+            this.setVariableMemory(instruction.args[2], list);
+            break;
+          }
+          case OpCode.LIST_GET: {
+            const list = this.variableCheck(instruction.args[0], instruction.line);
+            const index = this.variableCheck(instruction.args[1], instruction.line);
+            
+            if (list.type !== PanSparkType.List) {
+              throw new Error(`The provided variable is not a list at line ${instruction.line}`)
+            }
+            if (index.type !== PanSparkType.Number) {
+              throw new Error(`The provided index is not a number at line ${instruction.line}`)
+            }
+            
+            const value = list.value[index.value];
+            if (value === undefined) {
+              throw new Error(`The provided index is out of bounds at line ${instruction.line}`)
+            }
+            
+            this.setVariableMemory(instruction.args[3], Num(value));
+            break;
+          }
+          case OpCode.LIST_SET: {
+            const list = this.variableCheck(instruction.args[3], instruction.line);
+            const index = this.variableCheck(instruction.args[1], instruction.line);
+            const value = this.variableCheck(instruction.args[0], instruction.line);
+            
+            if (index.type !== PanSparkType.Number) {
+              throw new Error(`The provided index is not a number at line ${instruction.line}`)
+            }
+            
+            if (value.type !== PanSparkType.Number) {
+              throw new Error(`The provided value is not a number at line ${instruction.line}`)
+            }
+            
+            if (list.type !== PanSparkType.List) {
+              throw new Error(`The provided list is not a list at line ${instruction.line}`)
+            }
+            
+            list.value[index.value] = value.value;
+            this.setVariableMemory(instruction.args[3], list);
+            break;
+          }
+          case OpCode.LIST_SORT: {
+            const list = this.variableCheck(instruction.args[0], instruction.line);
+            if (list.type !== PanSparkType.List) {
+              throw new Error(`The provided list is not a list at line ${instruction.line}`)
+            }
+            
+            if (instruction.args[1] === "min") {
+              list.value.sort((a, b) => a - b);
+            } else if (instruction.args[1] === "max") {
+              list.value.sort((a, b) => b - a);
+            } else {
+              throw new Error(`Invalid sort order at line ${instruction.line}`);
+            }
             break;
           }
           case OpCode.FREE: {
@@ -553,10 +607,12 @@ export class PanSparkVM {
           }
           case OpCode.PRINT: {
             const printVar = this.variableCheck(instruction.args[0], instruction.line);
-            if (Number.isNaN(printVar.value)) {
-              throw new Error("Invalid print operation at line " + instruction.line);
-            } else {
+            if (printVar.type === PanSparkType.Number) {
               this.buffer.push(printVar.value.toString());
+            } else if (printVar.type === PanSparkType.String) {
+              this.buffer.push(printVar.value);
+            } else if (printVar.type === PanSparkType.List) {
+              this.buffer.push("[" + printVar.value.toString()+"]");
             }
             break;
           }

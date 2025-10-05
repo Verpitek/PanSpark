@@ -253,9 +253,18 @@ PRINT result`;
 
 const code3 = `
 LIST_CREATE list1
-SET num1
-PRINT num1
-`;
+LIST_PUSH 10 >> list1
+LIST_PUSH 20 >> list1
+LIST_PUSH 30 >> list1
+LIST_PUSH 40 >> list1
+LIST_PUSH 50 >> list1
+LIST_PUSH 60 >> list1
+LIST_PUSH 70 >> list1
+LIST_SET 3234532453 0 >> list1
+LIST_GET list1 0 >> first_element
+PRINT first_element
+LIST_SORT list1 min
+PRINT list1`;
 
 const program1 = vm1.run(vm1.compile(code3));
 
@@ -267,6 +276,7 @@ for (let line of vm1.buffer) {
   console.log(line);
 }
 
+vm1.resetVM();
 // Get the end time and calculate the duration
 const endTime = new Date().getTime();
 const duration = endTime - startTime;
