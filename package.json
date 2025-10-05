@@ -2,7 +2,7 @@
   "name": "panspark",
   "version": "1.1.0",
   "type": "module",
-  "private": true,
+  "private": false,
   "description": "PanSpark scripting language",
   "main": "dist/index.js",
   "repository": {
