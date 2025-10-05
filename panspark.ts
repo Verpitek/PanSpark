@@ -1,6 +1,6 @@
 export type OpCodeHandler = (args: string[], context: InterpreterContext) => void;
 
-// the types are mostly used for devs :3
+// the types are mostly used for devs
 enum PanSparkType {
   Number,
   String,
