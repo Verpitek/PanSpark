@@ -36,7 +36,11 @@ enum OpCode {
   MEMDUMP,
   TICK,
   IMPORT,
-  "}",
+  ENDPROC,
+  FOR,
+  ENDFOR,
+  BREAK,
+  CONTINUE,
   
   LIST_CREATE,
   LIST_SET,
@@ -45,7 +49,7 @@ enum OpCode {
   LIST_SORT
 }
 
-// Optimization: Pre-compiled instruction with resolved indices
+// Pre-compiled instruction with resolved indices
 interface CompiledInstruction {
   operation: OpCode | string;
   args: string[];
@@ -82,7 +86,7 @@ interface ProcStackFrame {
   args: Variable[];
 }
 
-// Optimization: Object pooling for stack frames
+// Object pooling for stack frames
 class FramePool {
   private pool: ProcStackFrame[] = [];
   
@@ -118,7 +122,7 @@ class FramePool {
   }
 }
 
-// Optimization: Pre-compiled regex
+// Pre-compiled regex
 const TOKEN_REGEX = /"([^"]*)"|\[([^\]]*)\]|\s*>>\s*(\S+)|\(([^)]*)\)|(\S+)/g;
 
 export class PanSparkVM {
@@ -130,6 +134,7 @@ export class PanSparkVM {
   
   // Procedure state with pooling
   private procStack: ProcStackFrame[] = [];
+  private forStack: Array<{ varName: string; endValue: number; forStartLine: number; endForLine: number }> = [];
   private framePool: FramePool = new FramePool();
   private procReturn: Variable = Num(0);
   private shouldReturn: boolean = false;
@@ -142,7 +147,7 @@ export class PanSparkVM {
   private customOpCodes: Map<string, OpCodeHandler> = new Map();
   private importedModules: Set<string> = new Set();
   
-  // Optimization: Math operation lookup tables (inlined for common ops)
+  // Math operation lookup tables (inlined for common ops)
   private binaryMathOps: Map<string, (a: number, b: number) => number> = new Map([
     ["%", (a, b) => a % b],
     ["**", (a, b) => Math.pow(a, b)],
@@ -166,6 +171,100 @@ export class PanSparkVM {
   ]);
 
   constructor() {}
+  
+  private evaluateExpression(expression: string, line: number): number {
+    // Remove all whitespace
+    expression = expression.replace(/\s+/g, '');
+    
+    // Helper to check if string is an operator
+    const isOperator = (char: string) => ['+', '-', '*', '/', '%'].includes(char);
+    
+    // Tokenize the expression
+    const tokens: string[] = [];
+    let currentToken = '';
+    let parenDepth = 0;
+    
+    for (let i = 0; i < expression.length; i++) {
+      const char = expression[i];
+      
+      if (char === '(') {
+        parenDepth++;
+        currentToken += char;
+      } else if (char === ')') {
+        parenDepth--;
+        currentToken += char;
+      } else if (isOperator(char) && parenDepth === 0) {
+        if (currentToken) tokens.push(currentToken);
+        tokens.push(char);
+        currentToken = '';
+      } else {
+        currentToken += char;
+      }
+    }
+    if (currentToken) tokens.push(currentToken);
+    
+    // Resolve variables and evaluate parentheses recursively
+    const resolvedTokens: (number | string)[] = tokens.map(token => {
+      if (isOperator(token)) return token;
+      
+      // Handle parentheses
+      if (token.startsWith('(') && token.endsWith(')')) {
+        return this.evaluateExpression(token.slice(1, -1), line);
+      }
+      
+      // Check if it's a number
+      const num = Number(token);
+      if (!isNaN(num)) return num;
+      
+      // It's a variable
+      const variable = this.variableCheck(token, line);
+      if (variable.type !== PanSparkType.Number) {
+        throw new Error(`Variable "${token}" is not a number at line ${line}`);
+      }
+      return variable.value;
+    });
+    
+    // Evaluate with operator precedence (*, /, % before +, -)
+    const evalWithPrecedence = (tokens: (number | string)[]): number => {
+      // First pass: *, /, %
+      let i = 0;
+      while (i < tokens.length) {
+        if (tokens[i] === '*' || tokens[i] === '/' || tokens[i] === '%') {
+          const left = tokens[i - 1] as number;
+          const op = tokens[i] as string;
+          const right = tokens[i + 1] as number;
+          
+          let result: number;
+          if (op === '*') result = left * right;
+          else if (op === '/') result = left / right;
+          else result = left % right;
+          
+          tokens.splice(i - 1, 3, result);
+        } else {
+          i++;
+        }
+      }
+      
+      // Second pass: +, -
+      i = 0;
+      while (i < tokens.length) {
+        if (tokens[i] === '+' || tokens[i] === '-') {
+          const left = tokens[i - 1] as number;
+          const op = tokens[i] as string;
+          const right = tokens[i + 1] as number;
+          
+          const result = op === '+' ? left + right : left - right;
+          tokens.splice(i - 1, 3, result);
+        } else {
+          i++;
+        }
+      }
+      
+      return tokens[0] as number;
+    };
+    
+    return evalWithPrecedence(resolvedTokens);
+  }
 
   public registerOpCode(name: string, handler: OpCodeHandler): void {
     this.customOpCodes.set(name.toUpperCase(), handler);
@@ -257,7 +356,7 @@ export class PanSparkVM {
     return procPoint;
   }
 
-  // Optimization: Single-pass compilation with instruction pre-processing
+  // Single-pass compilation with instruction pre-processing
   public compile(code: string): CompiledInstruction[] {
     let lines = code.split("\n");
     const instructions: CompiledInstruction[] = [];
@@ -294,6 +393,21 @@ export class PanSparkVM {
         continue;
       }
 
+      let forDepth = 0;
+      for (let counter = 0; counter < instructions.length; counter++) {
+        const instruction = instructions[counter];
+        
+        if (instruction.operation === OpCode.FOR) {
+          forDepth++;
+        }
+        if (instruction.operation === OpCode.ENDFOR) {
+          forDepth--;
+          if (forDepth < 0) {
+            throw new Error(`Unexpected ENDFOR at line ${instruction.line} without matching FOR`);
+          }
+        }
+      }
+      
       const opName = tokens[0].toUpperCase();
       let operation: OpCode | string | undefined = OpCode[tokens[0].toUpperCase() as keyof typeof OpCode];
       
@@ -345,7 +459,7 @@ export class PanSparkVM {
         }
       }
       
-      if (instruction.operation === OpCode["}"]) {
+      if (instruction.operation === OpCode.ENDPROC  ) {
         if (!procOpen) {
           throw new Error(`Unexpected '}' at line ${instruction.line} without matching PROC`);
         }
@@ -379,7 +493,7 @@ export class PanSparkVM {
     return instructions;
   }
 
-  // Optimization: Inline math operations for common operators
+  // Inline math operations for common operators
   private executeMath(a: number, b: number, op: string): number {
     switch (op) {
       case '+': return a + b;
@@ -400,7 +514,7 @@ export class PanSparkVM {
     throw new Error(`Unknown unary operator: ${op}`);
   }
 
-  // Optimization: Predictive execution - batch instructions without WAIT
+  // Predictive execution - batch instructions without WAIT
   private shouldBatchExecute(instructions: CompiledInstruction[], startIdx: number): number {
     let batchSize = 0;
     const maxBatch = Math.min(50, instructions.length - startIdx); // Limit batch size
@@ -444,7 +558,7 @@ export class PanSparkVM {
         }
       }
       
-      // Optimization: Use cached custom handler
+      // Use cached custom handler
       if (typeof instruction.operation === 'string') {
         const handler = instruction.customHandler || this.customOpCodes.get(instruction.operation);
         if (handler) {
@@ -624,45 +738,56 @@ export class PanSparkVM {
           case OpCode.MATH: {
             const instructionArgs = instruction.args;
             const line = instruction.line;
-            const op = instructionArgs[1];
-            let result: number;
-            let destVariable: string;
-        
-            // Check if it's a binary operator
-            if (op === '+' || op === '-' || op === '*' || op === '/' || 
-                op === '%' || op === '**' || op === 'min' || op === 'max') {
-              if (instructionArgs.length !== 5 || instructionArgs[3] !== ">>") {
-                throw new Error(`Invalid syntax for binary math operation at line ${line}. Expected: MATH var1 op var2 >> result`);
+            
+            // Find the >> operator
+            const arrowIndex = instructionArgs.indexOf(">>");
+            if (arrowIndex === -1 || arrowIndex === instructionArgs.length - 1) {
+              throw new Error(`Invalid MATH syntax at line ${line}. Expected: MATH expression >> result`);
+            }
+            
+            const destVariable = instructionArgs[arrowIndex + 1];
+            const expressionArgs = instructionArgs.slice(0, arrowIndex);
+            
+            // Check if it's a unary function (sqrt, sin, cos, etc.)
+            if (expressionArgs.length === 2) {
+              const op = expressionArgs[1];
+              if (this.unaryMathOps.has(op)) {
+                const arg = this.variableCheck(expressionArgs[0], line);
+                if (arg.type !== PanSparkType.Number) {
+                  throw new Error(`The provided variable is not a number at line ${line}`);
+                }
+                const result = this.executeUnaryMath(arg.value, op);
+                this.setVariableMemory(destVariable, Num(result));
+                break;
               }
-              const arg1 = this.variableCheck(instructionArgs[0], line);
-              const arg2 = this.variableCheck(instructionArgs[2], line);
-              destVariable = instructionArgs[4];
+            }
+            
+            // Check if it's a simple binary operation (legacy support)
+            if (expressionArgs.length === 3) {
+              const op = expressionArgs[1];
+              if (['+', '-', '*', '/', '%', '**', 'min', 'max'].includes(op)) {
+                const arg1 = this.variableCheck(expressionArgs[0], line);
+                const arg2 = this.variableCheck(expressionArgs[2], line);
                 
-              if (arg1.type === PanSparkType.Number && arg2.type === PanSparkType.Number) {
-                result = this.executeMath(arg1.value, arg2.value, op);
-              } else {
-                throw new Error(`The provided variable is not a number at line ${instruction.line}`)
-              }
-            } else {
-              // Unary operator
-              if (instructionArgs.length !== 4 || instructionArgs[2] !== ">>") {
-                throw new Error(`Invalid syntax for unary math operation at line ${line}. Expected: MATH var1 op >> result`);
-              }
-              const arg1 = this.variableCheck(instructionArgs[0], line);
-              destVariable = instructionArgs[3];
-        
-              if (arg1.type === PanSparkType.Number) {
-                result = this.executeUnaryMath(arg1.value, op);
-              } else {
-                throw new Error(`The provided variable is not a number at line ${instruction.line}`)
+                if (arg1.type !== PanSparkType.Number || arg2.type !== PanSparkType.Number) {
+                  throw new Error(`The provided variables are not numbers at line ${line}`);
+                }
+                
+                const result = this.executeMath(arg1.value, arg2.value, op);
+                this.setVariableMemory(destVariable, Num(result));
+                break;
               }
             }
-        
+            
+            // Multi-term expression - combine all args into a single expression string
+            const expression = expressionArgs.join(' ');
+            const result = this.evaluateExpression(expression, line);
+            
             if (Number.isNaN(result)) {
-              throw new Error(`Math operation resulted in NaN at line ${line}. Check for invalid inputs like sqrt(-1) or 0/0.`);
-            } else {
-              this.setVariableMemory(destVariable, Num(result));
+              throw new Error(`Math operation resulted in NaN at line ${line}`);
             }
+            
+            this.setVariableMemory(destVariable, Num(result));
             break;
           }
           case OpCode.IF: {
@@ -760,7 +885,7 @@ export class PanSparkVM {
             }
             break;
           }
-          case OpCode["}"]: {
+          case OpCode.ENDPROC: {
             if (this.procLock) {
               const frame = this.procStack.pop()!;
               
@@ -775,6 +900,116 @@ export class PanSparkVM {
               this.framePool.free(frame);
               
               this.counter = frame.returnLocation;
+            }
+            break;
+          }
+          case OpCode.FOR: {
+            const instructionArgs = instruction.args;
+            if (instructionArgs.length < 3) {
+              throw new Error(`Invalid FOR syntax at line ${instruction.line}. Expected: FOR variable start end`);
+            }
+            
+            const varName = instructionArgs[0];
+            const startValue = this.variableCheck(instructionArgs[1], instruction.line);
+            const endValue = this.variableCheck(instructionArgs[2], instruction.line);
+            
+            if (startValue.type !== PanSparkType.Number || endValue.type !== PanSparkType.Number) {
+              throw new Error(`FOR loop bounds must be numbers at line ${instruction.line}`);
+            }
+            
+            if (endValue.value < startValue.value) {
+              throw new Error(`Invalid FOR loop at line ${instruction.line}. End value must be >= start value`);
+            }
+            
+            // Find the matching ENDFOR
+            let endForLine = -1;
+            let depth = 0;
+            for (let i = this.counter + 1; i < instructions.length; i++) {
+              if (instructions[i].operation === OpCode.FOR) depth++;
+              if (instructions[i].operation === OpCode.ENDFOR) {
+                if (depth === 0) {
+                  endForLine = i;
+                  break;
+                }
+                depth--;
+              }
+            }
+            
+            if (endForLine === -1) {
+              throw new Error(`FOR loop at line ${instruction.line} has no matching ENDFOR`);
+            }
+            
+            // Initialize the loop variable
+            this.setVariableMemory(varName, Num(startValue.value));
+            
+            // Push loop info onto the stack
+            this.forStack.push({
+              varName: varName,
+              endValue: endValue.value,
+              forStartLine: this.counter,
+              endForLine: endForLine
+            });
+            break;
+          }
+          case OpCode.ENDFOR: {
+            if (this.forStack.length === 0) {
+              throw new Error(`ENDFOR without matching FOR at line ${instruction.line}`);
+            }
+            
+            const loopInfo = this.forStack[this.forStack.length - 1];
+            const loopVar = this.variableCheck(loopInfo.varName, instruction.line);
+            
+            if (loopVar.type !== PanSparkType.Number) {
+              throw new Error(`Loop variable must be a number at line ${instruction.line}`);
+            }
+            
+            const nextValue = loopVar.value + 1;
+            
+            // Check if we should continue looping
+            if (nextValue <= loopInfo.endValue) {
+              // Increment the loop variable
+              this.setVariableMemory(loopInfo.varName, Num(nextValue));
+              // Jump back to the instruction after FOR
+              this.counter = loopInfo.forStartLine;
+            } else {
+              // Loop is done, pop from stack
+              this.forStack.pop();
+            }
+            break;
+          }
+          case OpCode.BREAK: {
+            if (this.forStack.length === 0) {
+              throw new Error(`BREAK can only be used inside a FOR loop at line ${instruction.line}`);
+            }
+            
+            // Pop the current loop and jump to after ENDFOR
+            const loopInfo = this.forStack.pop()!;
+            this.counter = loopInfo.endForLine;
+            break;
+          }
+          case OpCode.CONTINUE: {
+            if (this.forStack.length === 0) {
+              throw new Error(`CONTINUE can only be used inside a FOR loop at line ${instruction.line}`);
+            }
+            
+            const loopInfo = this.forStack[this.forStack.length - 1];
+            const loopVar = this.variableCheck(loopInfo.varName, instruction.line);
+            
+            if (loopVar.type !== PanSparkType.Number) {
+              throw new Error(`Loop variable must be a number at line ${instruction.line}`);
+            }
+            
+            const nextValue = loopVar.value + 1;
+            
+            // Check if we should continue looping
+            if (nextValue <= loopInfo.endValue) {
+              // Increment the loop variable and jump back
+              this.setVariableMemory(loopInfo.varName, Num(nextValue));
+              this.counter = loopInfo.forStartLine;
+            } else {
+              // Loop is exhausted, pop and jump to ENDFOR
+              this.forStack.pop();
+              this.counter = loopInfo.endForLine;
             }
             break;
           }
@@ -854,7 +1089,9 @@ export class PanSparkVM {
     this.jumpPoints.clear();
     this.procPoints.clear();
     this.buffer = [];
+    this.forStack = [];
     this.procStack = [];
+    this.forStack = [];
     this.framePool.clear();
     this.procReturn = Num(0);
     this.shouldReturn = false;

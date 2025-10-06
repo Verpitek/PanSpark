@@ -252,19 +252,17 @@ CALL adv (10, 20) >> result
 PRINT result`;
 
 const code3 = `
-LIST_CREATE list1
-LIST_PUSH 10 >> list1
-LIST_PUSH 20 >> list1
-LIST_PUSH 30 >> list1
-LIST_PUSH 40 >> list1
-LIST_PUSH 50 >> list1
-LIST_PUSH 60 >> list1
-LIST_PUSH 70 >> list1
-LIST_SET 3234532453 0 >> list1
-LIST_GET list1 0 >> first_element
-PRINT first_element
-LIST_SORT list1 min
-PRINT list1`;
+FOR i 0 3
+  FOR j 0 3
+    IF j == 2 JUMP inner_break
+    ECHO "Inner loop"
+    JUMP inner_next
+    POINT inner_break
+    BREAK
+    POINT inner_next
+  ENDFOR
+  ECHO "Outer loop"
+ENDFOR`;
 
 const program1 = vm1.run(vm1.compile(code3));
 
