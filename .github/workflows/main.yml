@@ -1,68 +1,47 @@
-name: Bun Build and Semantic Release
+name: Build and Release PanSpark
 
-# This workflow runs whenever code is pushed to the 'main' branch
 on:
   push:
     branches:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. Checkout Code
+      - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          # Fetch all history for version calculation
-          fetch-depth: 0
+          bun-version: latest
 
-      - name: 2. Setup Bun Environment
-        uses: oven-sh/setup-bun@v1
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
 
-      # --- Build Step ---
-      - name: 3. Install Dependencies (Optional, adjust if needed)
-        run: bun install
+      - name: Build project
+        run: bun build panspark.ts --outdir dist --minify
 
-      - name: 4. Bun Build Script
+      - name: Get version number
+        id: get_version
         run: |
-          # The user's specific build command
-          bun build panspark.ts --minify --outfile ./dist/panspark.js
-        # The output file path is now ./dist/panspark.js
+          VERSION=$(jq -r '.version' package.json)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # --- Versioning and Release Steps ---
-
-      - name: 5. Determine Next Semantic Version
-        id: semver
-        uses: anh/action-next-semver@v4
-
-      - name: 6. Create GitHub Release
-        if: steps.semver.outputs.is_bump == 'true'
+      - name: Create GitHub Release
+        id: create_release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.semver.outputs.next_tag }}
-          name: Release ${{ steps.semver.outputs.next_tag }}
-          body: |
-            ## Automated Release ${{ steps.semver.outputs.next_tag }}
-
-            This release includes changes based on the commit history since the last version.
-            
-            **Build Artifacts:**
-            - panspark.js
-            
-          # Only attach the generated JS file to the release
-          files: ./dist/panspark.js
-          
-          # This ensures that if the tag already exists, it will update the release
-          # which is helpful if the action needs to be rerun.
-          prerelease: false
-          draft: false
+          tag_name: v${{ steps.get_version.outputs.version }}
+          name: "PanSpark v${{ steps.get_version.outputs.version }}"
+          body: "Automated release of PanSpark."
+          files: |
+            dist/panspark.js
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: 7. Skip Release (No conventional commit detected)
-        if: steps.semver.outputs.is_bump == 'false'
-        run: |
-          echo "No conventional commit (fix:, feat:, BREAKING CHANGE:) found. Skipping release creation."
-          echo "Current latest tag: ${{ steps.semver.outputs.current_tag }}"
