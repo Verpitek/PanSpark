@@ -4,7 +4,7 @@
   "description": "PanSpark scripting language runtime",
   "main": "build/panspark.js",
   "type": "module",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "keywords": ["panspark", "scripting", "minecraft"],
   "files": [
     "build/panspark.js"
