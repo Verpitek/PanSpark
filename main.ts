@@ -8,14 +8,9 @@ const vm1 = new PanSparkVM();
 
 console.log("=== VM1 Execution ===");
 
-// Load the list module before compilation
-import * as evalModule from './std/eval';
-vm1.loadModule('eval', evalModule);
-
 let code1: string = `
-// ===== MODULE IMPORTS =====
-IMPORT "eval"
-ECHO "Modules loaded successfully"
+// ===== BASIC OPERATIONS =====
+ECHO "Program started successfully"
 
 // ===== VARIABLE OPERATIONS =====
 SET 42 >> answer

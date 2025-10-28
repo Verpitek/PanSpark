@@ -59,7 +59,6 @@ enum OpCode {
   NOP,
   MEMDUMP,
   TICK,
-  IMPORT,
   ENDPROC,
   FOR,
   ENDFOR,
@@ -1119,18 +1118,6 @@ export class PanSparkVM {
                 throw new Error(`WAIT requires a numeric value at line ${instruction.line}`);
               }
             }
-            break;
-          }
-          case OpCode.IMPORT: {
-            const moduleName = instruction.args[0];
-            
-            if (this.importedModules.has(moduleName)) {
-              this.buffer.push(`Module '${moduleName}' already imported`);
-              break;
-            }
-            
-            this.buffer.push(`Module '${moduleName}' imported successfully`);
-            this.importedModules.add(moduleName);
             break;
           }
           default:
