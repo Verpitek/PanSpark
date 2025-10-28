@@ -176,12 +176,11 @@ PROC factorial (n)
     JUMP factorial_loop
     POINT end_factorial_loop
     RETURN result
-}
+ENDPROC
 
 // Define a PROC to calculate Fibonacci (iterative to avoid stack overflow)
 PROC fibonacci (n)
     IF n <= 1 >> fib_base_case
-    
     SET 0 >> a
     SET 1 >> b
     SET 2 >> i
@@ -199,7 +198,7 @@ PROC fibonacci (n)
     
     POINT fib_base_case
     RETURN n
-}
+ENDPROC
 
 // Define a PROC to find maximum of two numbers
 PROC max_two (a, b)
@@ -207,7 +206,7 @@ PROC max_two (a, b)
     RETURN b
     POINT a_greater
     RETURN a
-}
+ENDPROC
 
 // Call procedures and demonstrate results
 ECHO "Calculating factorial of 5:"
@@ -264,7 +263,7 @@ FOR i 0 3
   ECHO "Outer loop"
 ENDFOR`;
 
-const program1 = vm1.run(vm1.compile(code3));
+const program1 = vm1.run(vm1.compile(code1));
 
 while (program1.next().done === false) {
 }
@@ -278,5 +277,5 @@ vm1.resetVM();
 // Get the end time and calculate the duration
 const endTime = new Date().getTime();
 const duration = endTime - startTime;
-
+console.log(vm1.uuid);
 console.log(`\nTime taken to run: ${duration}ms`);

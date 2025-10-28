@@ -1,5 +1,29 @@
 export type OpCodeHandler = (args: string[], context: InterpreterContext) => void;
 
+// works... just barely
+function generateUUID() {
+  var chars = '0123456789abcdef';
+  var uuid = '';
+  var i = 0;
+  while (i < 36) {
+    if (i === 8 || i === 13 || i === 18 || i === 23) {
+      uuid += '-';
+    } else if (i === 14) {
+      uuid += '4';
+    } else if (i === 19) {
+      var n = Math.floor(Math.random() * 4);
+      uuid += chars[n + 8];
+    } else {
+      var n = Math.floor(Math.random() * 16);
+      uuid += chars[n];
+    }
+    i++;
+  }
+  
+  return uuid;
+}
+
+
 // the types are mostly used for devs :3
 enum PanSparkType {
   Number,
@@ -130,6 +154,7 @@ export class PanSparkVM {
   private jumpPoints: Map<string, number> = new Map();
   private procPoints: Map<string, [number, number]> = new Map();
   private variableMemory: Map<string, Variable> = new Map();
+  public uuid: string = generateUUID();
   public buffer: string[] = [];
   
   // Procedure state with pooling
