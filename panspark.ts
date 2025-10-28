@@ -1667,18 +1667,132 @@ export class PanSparkVM {
     return this.variableMemory;
   }
 
-  public loadModule(moduleName: string, moduleExports: any): void {
-    if (this.importedModules.has(moduleName)) {
-      return;
-    }
-    
-    if (moduleExports && typeof moduleExports.registerWith === 'function') {
-      moduleExports.registerWith(this);
-      this.importedModules.add(moduleName);
-    } else {
-      throw new Error(`Module '${moduleName}' does not export a registerWith function`);
-    }
-  }
+   public loadModule(moduleName: string, moduleExports: any): void {
+     if (this.importedModules.has(moduleName)) {
+       return;
+     }
+     
+     if (moduleExports && typeof moduleExports.registerWith === 'function') {
+       moduleExports.registerWith(this);
+       this.importedModules.add(moduleName);
+     } else {
+       throw new Error(`Module '${moduleName}' does not export a registerWith function`);
+     }
+   }
+
+   /**
+    * Saves the entire VM execution state to a serialized string
+    * Includes variables, jump points, procedures, execution position, and all runtime state
+    */
+   public saveState(): string {
+     const state = {
+       uuid: this.uuid,
+       counter: this.counter,
+       waitTicks: this.waitTicks,
+       variableMemory: this.serializeVariableMap(this.variableMemory),
+       jumpPoints: Array.from(this.jumpPoints.entries()),
+       procPoints: Array.from(this.procPoints.entries()),
+       procStack: this.procStack.map(frame => ({
+         variableMemory: this.serializeVariableMap(frame.variableMemory),
+         returnLocation: frame.returnLocation,
+         returnValueTarget: frame.returnValueTarget,
+         procStartLine: frame.procStartLine,
+         procEndLine: frame.procEndLine,
+         procName: frame.procName,
+         args: frame.args.map(arg => this.serializeVariable(arg)),
+       })),
+       forStack: this.forStack,
+       procReturn: this.serializeVariable(this.procReturn),
+       shouldReturn: this.shouldReturn,
+       buffer: this.buffer,
+       maxVariableCount: this.maxVariableCount,
+       debugMode: this.debugMode,
+     };
+     
+     return JSON.stringify(state);
+   }
+
+   /**
+    * Loads a previously saved VM state from a serialized string
+    * Restores execution from where it left off with all runtime state intact
+    */
+   public loadState(serializedState: string): void {
+     try {
+       const state = JSON.parse(serializedState);
+       
+       this.uuid = state.uuid;
+       this.counter = state.counter;
+       this.waitTicks = state.waitTicks;
+       this.variableMemory = this.deserializeVariableMap(state.variableMemory);
+       this.jumpPoints = new Map(state.jumpPoints);
+       this.procPoints = new Map(state.procPoints);
+       this.procStack = state.procStack.map((frameData: any) => ({
+         variableMemory: this.deserializeVariableMap(frameData.variableMemory),
+         returnLocation: frameData.returnLocation,
+         returnValueTarget: frameData.returnValueTarget,
+         procStartLine: frameData.procStartLine,
+         procEndLine: frameData.procEndLine,
+         procName: frameData.procName,
+         args: frameData.args.map((arg: any) => this.deserializeVariable(arg)),
+       }));
+       this.forStack = state.forStack;
+       this.procReturn = this.deserializeVariable(state.procReturn);
+       this.shouldReturn = state.shouldReturn;
+       this.buffer = state.buffer;
+       this.maxVariableCount = state.maxVariableCount;
+       this.debugMode = state.debugMode;
+     } catch (err) {
+       const errorMsg = err instanceof Error ? err.message : String(err);
+       throw new Error(`Failed to load VM state: ${errorMsg}`);
+     }
+   }
+
+   /**
+    * Serializes a Variable object to a JSON-compatible format
+    */
+   private serializeVariable(variable: Variable): any {
+     return {
+       type: variable.type,
+       value: variable.value,
+     };
+   }
+
+   /**
+    * Deserializes a Variable object from JSON format
+    */
+   private deserializeVariable(data: any): Variable {
+     switch (data.type) {
+       case PanSparkType.Number:
+         return Num(data.value);
+       case PanSparkType.String:
+         return Str(data.value);
+       case PanSparkType.List:
+         return List(data.value);
+       default:
+         throw new Error(`Unknown variable type: ${data.type}`);
+     }
+   }
+
+   /**
+    * Serializes a Map of variables to an array of [key, serialized_variable] pairs
+    */
+   private serializeVariableMap(varMap: Map<string, Variable>): Array<[string, any]> {
+     return Array.from(varMap.entries()).map(([key, value]) => [
+       key,
+       this.serializeVariable(value),
+     ]);
+   }
+
+   /**
+    * Deserializes a Map of variables from an array of [key, serialized_variable] pairs
+    */
+   private deserializeVariableMap(data: Array<[string, any]>): Map<string, Variable> {
+     const varMap = new Map<string, Variable>();
+     for (const [key, value] of data) {
+       varMap.set(key, this.deserializeVariable(value));
+     }
+     return varMap;
+   }
 }
 
 export function createVM(): PanSparkVM {
