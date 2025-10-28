@@ -947,6 +947,93 @@ const limit = vm.getMaxVariableCount();
 
 ---
 
+## State Cloning & Persistence
+
+PanSpark VMs can save and restore their complete execution state, enabling checkpoint-and-resume workflows, state persistence, and advanced debugging scenarios.
+
+### Saving State
+
+Use `saveState()` to capture the current VM state including all variables, execution position, and control flow:
+
+```typescript
+const vm = new PanSparkVM();
+const code = `
+  SET 42 >> x
+  SET 100 >> y
+  MATH x + y >> z
+`;
+const instructions = vm.compile(code);
+const gen = vm.run(instructions);
+
+// Execute first 2 steps
+gen.next();
+gen.next();
+
+// Save state
+const savedState = vm.saveState(instructions);
+```
+
+### Restoring State
+
+Use `loadState()` to restore a previously saved state into a new (or existing) VM:
+
+```typescript
+// Restore to new VM
+const vm2 = new PanSparkVM();
+const restoredInstructions = vm2.loadState(savedState);
+```
+
+### Resuming Execution from Checkpoint
+
+After restoring state, you can continue execution from where it left off:
+
+```typescript
+const vm = new PanSparkVM();
+const code = `
+  SET 0 >> i
+  POINT loop_start
+  PRINT i
+  MATH i + 1 >> i
+  IF i < 3 >> loop_start
+  ECHO "Done"
+`;
+const instructions = vm.compile(code);
+const gen = vm.run(instructions);
+
+// Run first 5 steps
+for (let j = 0; j < 5; j++) {
+  gen.next();
+}
+
+// Save state at checkpoint
+const savedState = vm.saveState(instructions);
+
+// Restore and continue on new VM
+const vm2 = new PanSparkVM();
+const restoredInstructions = vm2.loadState(savedState)!;
+const gen2 = vm2.run(restoredInstructions);
+
+// Complete execution from checkpoint
+while (gen2.next().done === false) {}
+```
+
+### State Serialization Format
+
+- States are serialized as strings (max 32767 characters)
+- State includes all variables (numbers, strings, lists)
+- Preserves execution counter, procedure stack, and FOR loop state
+- Compatible across different VM instances
+
+### Important Notes
+
+- States are VM snapshots - they capture all memory and execution context
+- Serialized state strings should not be manually edited
+- State size is limited to 32767 characters for safety
+- Use `saveState()` during execution (generator in progress) or after completion
+- Restoring corrupted state will throw an error
+
+---
+
 ## Expression Evaluation
 
 ### AST-Based Evaluation
