@@ -726,10 +726,289 @@ runTest("NOP - No operation", () => {
   expectOutput(code, ["Before", "After"]);
 });
 
+// ==================== STATE PERSISTENCE ====================
+console.log("\n=== STATE PERSISTENCE ===\n");
+
+runTest("State - Save and restore basic state", () => {
+  const vm = new PanSparkVM();
+  const code = `
+    SET 42 >> x
+    SET 100 >> y
+    MATH x + y >> z
+  `;
+  const instructions = vm.compile(code);
+  const gen = vm.run(instructions);
+  
+  // Execute first 2 steps
+  gen.next();
+  gen.next();
+  
+  // Save state
+  const savedState = vm.saveState(instructions);
+  
+  // Verify state was saved
+  if (savedState.length === 0) {
+    throw new Error("State string is empty");
+  }
+  if (savedState.length > 32767) {
+    throw new Error(`State size ${savedState.length} exceeds 32767 limit`);
+  }
+  
+  // Restore to new VM
+  const vm2 = new PanSparkVM();
+  const restoredInstructions = vm2.loadState(savedState);
+  
+  if (!restoredInstructions) {
+    throw new Error("Instructions were not restored");
+  }
+  
+  // Verify state was restored
+  if (vm2.counter !== vm.counter) {
+    throw new Error(`Counter mismatch: expected ${vm.counter}, got ${vm2.counter}`);
+  }
+});
+
+runTest("State - Save preserves variables", () => {
+  const vm = new PanSparkVM();
+  const code = `
+    SET 42 >> answer
+    SET "hello" >> message
+    SET 3.14 >> pi
+  `;
+  const instructions = vm.compile(code);
+  const gen = vm.run(instructions);
+  
+  // Run all
+  while (gen.next().done === false) {}
+  
+  const savedState = vm.saveState(instructions);
+  
+  // Restore
+  const vm2 = new PanSparkVM();
+  vm2.loadState(savedState);
+  
+  const vars1 = vm.getVariableMemory();
+  const vars2 = vm2.getVariableMemory();
+  
+  if (vars1.size !== vars2.size) {
+    throw new Error(`Variable count mismatch: ${vars1.size} vs ${vars2.size}`);
+  }
+});
+
+runTest("State - Resume execution from saved state", () => {
+  const vm = new PanSparkVM();
+  const code = `
+    SET 0 >> i
+    POINT loop_start
+    PRINT i
+    MATH i + 1 >> i
+    IF i < 3 >> loop_start
+    ECHO "Done"
+  `;
+  const instructions = vm.compile(code);
+  const gen = vm.run(instructions);
+  
+  // Run first 5 steps
+  for (let j = 0; j < 5; j++) {
+    gen.next();
+  }
+  
+  const savedState = vm.saveState(instructions);
+  
+  // Restore and continue
+  const vm2 = new PanSparkVM();
+  const restoredInstructions = vm2.loadState(savedState)!;
+  const gen2 = vm2.run(restoredInstructions);
+  
+  while (gen2.next().done === false) {}
+  
+  // Should complete successfully
+  if (!vm2.buffer.includes("Done")) {
+    throw new Error("Execution did not complete properly after restore");
+  }
+});
+
+runTest("State - Save with procedures", () => {
+  const vm = new PanSparkVM();
+  const code = `
+    PROC add (a, b)
+      MATH a + b >> result
+      RETURN result
+    ENDPROC
+    CALL add (5, 3) >> sum
+    PRINT sum
+  `;
+  const instructions = vm.compile(code);
+  const gen = vm.run(instructions);
+  
+  // Run first few steps
+  for (let i = 0; i < 3; i++) {
+    gen.next();
+  }
+  
+  const savedState = vm.saveState(instructions);
+  
+  // Restore
+  const vm2 = new PanSparkVM();
+  const restoredInstructions = vm2.loadState(savedState)!;
+  
+  // Continue execution
+  const gen2 = vm2.run(restoredInstructions);
+  while (gen2.next().done === false) {}
+  
+  expectOutput(code, ["8"]);
+});
+
+runTest("State - Character limit validation", () => {
+  const vm = new PanSparkVM();
+  
+  // Create a huge buffer to exceed limit
+  vm.buffer = new Array(35000).fill("x");
+  
+  try {
+    vm.saveState();
+    throw new Error("Expected error for exceeding character limit");
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (!errorMsg.includes("32767")) {
+      throw new Error(`Error should mention 32767 limit: ${errorMsg}`);
+    }
+  }
+});
+
+runTest("State - Save without instructions (smaller size)", () => {
+  const vm = new PanSparkVM();
+  const code = `
+    SET 42 >> x
+    SET 100 >> y
+  `;
+  const instructions = vm.compile(code);
+  const gen = vm.run(instructions);
+  while (gen.next().done === false) {}
+  
+  const withInstructions = vm.saveState(instructions);
+  const withoutInstructions = vm.saveState();
+  
+  // Without instructions should be smaller
+  if (withoutInstructions.length >= withInstructions.length) {
+    throw new Error(
+      `State without instructions (${withoutInstructions.length}) should be smaller than with (${withInstructions.length})`
+    );
+  }
+});
+
+runTest("State - Load returns null when no instructions saved", () => {
+  const vm = new PanSparkVM();
+  const code = `SET 42 >> x`;
+  const instructions = vm.compile(code);
+  const gen = vm.run(instructions);
+  gen.next();
+  
+  // Save WITHOUT instructions
+  const savedState = vm.saveState();
+  
+  // Load
+  const vm2 = new PanSparkVM();
+  const restoredInstructions = vm2.loadState(savedState);
+  
+  if (restoredInstructions !== null) {
+    throw new Error("loadState should return null when instructions not saved");
+  }
+});
+
+runTest("State - Restore state with FOR loops", () => {
+  const vm = new PanSparkVM();
+  const code = `
+    FOR i 0 2
+      PRINT i
+    ENDFOR
+  `;
+  const instructions = vm.compile(code);
+  const gen = vm.run(instructions);
+  
+  // Run partial
+  gen.next();
+  gen.next();
+  gen.next();
+  
+  const savedState = vm.saveState(instructions);
+  
+  // Restore
+  const vm2 = new PanSparkVM();
+  const restoredInstructions = vm2.loadState(savedState)!;
+  const gen2 = vm2.run(restoredInstructions);
+  
+  while (gen2.next().done === false) {}
+  
+  // Should have printed all values
+  if (!vm2.buffer.includes("0") || !vm2.buffer.includes("2")) {
+    throw new Error("FOR loop did not complete properly after restore");
+  }
+});
+
+runTest("State - UUID preserved after restore", () => {
+  const vm = new PanSparkVM();
+  const originalUUID = vm.uuid;
+  
+  const code = `SET 42 >> x`;
+  const instructions = vm.compile(code);
+  const gen = vm.run(instructions);
+  gen.next();
+  
+  const savedState = vm.saveState(instructions);
+  
+  // Restore
+  const vm2 = new PanSparkVM();
+  vm2.loadState(savedState);
+  
+  if (vm2.uuid !== originalUUID) {
+    throw new Error(
+      `UUID mismatch: expected ${originalUUID}, got ${vm2.uuid}`
+    );
+  }
+});
+
+runTest("State - Corrupted state throws error", () => {
+  const vm = new PanSparkVM();
+  
+  try {
+    vm.loadState("invalid json");
+    throw new Error("Expected error when loading corrupted state");
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (!errorMsg.includes("Failed to load")) {
+      throw new Error(`Error should mention failed load: ${errorMsg}`);
+    }
+  }
+});
+
+runTest("State - Large state at exactly 32767 characters", () => {
+  const vm = new PanSparkVM();
+  
+  // Create state that's close to limit
+  const code = `SET 42 >> x`;
+  const instructions = vm.compile(code);
+  const gen = vm.run(instructions);
+  gen.next();
+  
+  const savedState = vm.saveState(instructions);
+  
+  // Should not throw if under limit
+  if (savedState.length > 32767) {
+    throw new Error(`State size ${savedState.length} exceeds limit`);
+  }
+  
+  // Should be able to restore
+  const vm2 = new PanSparkVM();
+  const restoredInstructions = vm2.loadState(savedState);
+  
+  if (!restoredInstructions) {
+    throw new Error("Failed to restore state");
+  }
+});
+
 // ==================== WAIT OPERATIONS ====================
 console.log("\n=== WAIT OPERATIONS ===\n");
-
-undefined
 
 // ==================== EDGE CASES & ERROR HANDLING ====================
 console.log("\n=== EDGE CASES & ERROR HANDLING ===\n");

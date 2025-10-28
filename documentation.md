@@ -865,9 +865,7 @@ DOUBLE x >> result
 PRINT result  // outputs: 10
 ```
 
----
-
-## Running PanSpark
+undefined
 
 ### Basic Usage
 
