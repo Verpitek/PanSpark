@@ -150,6 +150,9 @@ class FramePool {
 const TOKEN_REGEX = /"([^"]*)"|\[([^\]]*)\]|\s*>>\s*(\S+)|\(([^)]*)\)|(\S+)/g;
 
 export class PanSparkVM {
+  // Max recursion depth to prevent stack overflow
+  private static readonly MAX_RECURSION_DEPTH = 1000;
+  
   // Instance state
   private jumpPoints: Map<string, number> = new Map();
   private procPoints: Map<string, [number, number]> = new Map();
@@ -498,20 +501,28 @@ export class PanSparkVM {
       throw new Error(`Unclosed PROC "${procPoint.name}" starting at line ${procPoint.startLine + 1}`);
     }
 
-    // Pass 3: Pre-resolve jump targets
+    // Pass 3: Pre-resolve jump targets and validate they exist
     for (let i = 0; i < instructions.length; i++) {
       const instruction = instructions[i];
       
       if (instruction.operation === OpCode.JUMP && instruction.args.length > 0) {
         const target = this.jumpPoints.get(instruction.args[0]);
-        if (target !== undefined) {
-          instruction.jumpTarget = target;
+        if (target === undefined) {
+          throw new Error(
+            `Jump target "${instruction.args[0]}" not found at line ${instruction.line}. ` +
+            `Valid targets are: ${Array.from(this.jumpPoints.keys()).join(', ') || '(none defined)'}`
+          );
         }
+        instruction.jumpTarget = target;
       } else if (instruction.operation === OpCode.IF && instruction.args.length >= 5) {
         const target = this.jumpPoints.get(instruction.args[4]);
-        if (target !== undefined) {
-          instruction.jumpTarget = target;
+        if (target === undefined) {
+          throw new Error(
+            `Jump target "${instruction.args[4]}" not found at line ${instruction.line}. ` +
+            `Valid targets are: ${Array.from(this.jumpPoints.keys()).join(', ') || '(none defined)'}`
+          );
         }
+        instruction.jumpTarget = target;
       }
     }
 
@@ -524,7 +535,13 @@ export class PanSparkVM {
       case '+': return a + b;
       case '-': return a - b;
       case '*': return a * b;
-      case '/': return a / b;
+      case '/': {
+        // Prevent division by zero
+        if (b === 0) {
+          throw new Error(`Division by zero error: cannot divide ${a} by 0`);
+        }
+        return a / b;
+      }
       default: {
         const binOp = this.binaryMathOps.get(op);
         if (binOp) return binOp(a, b);
@@ -686,6 +703,14 @@ export class PanSparkVM {
             
             if (list.type !== PanSparkType.List) {
               throw new Error(`The provided list is not a list at line ${instruction.line}`)
+            }
+            
+            // Add bounds checking to prevent out-of-bounds writes
+            if (index.value < 0 || index.value >= list.value.length) {
+              throw new Error(
+                `List index ${index.value} out of bounds at line ${instruction.line}. ` +
+                `List has ${list.value.length} elements (valid indices: 0-${list.value.length - 1})`
+              );
             }
             
             list.value[index.value] = value.value;
@@ -1043,6 +1068,14 @@ export class PanSparkVM {
             
             if (instructionArgs.length < 2) {
               throw new Error(`Invalid CALL syntax at line ${instruction.line}. Expected: CALL procName (args) or CALL procName (args) >> result`);
+            }
+            
+            // Check recursion depth limit to prevent stack overflow
+            if (this.procStack.length >= PanSparkVM.MAX_RECURSION_DEPTH) {
+              throw new Error(
+                `Maximum recursion depth (${PanSparkVM.MAX_RECURSION_DEPTH}) exceeded at line ${instruction.line}. ` +
+                `Current call stack depth: ${this.procStack.length}. Check for infinite recursion.`
+              );
             }
             
             const procName = instructionArgs[0];
