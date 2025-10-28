@@ -177,9 +177,13 @@ export class PanSparkVM {
   public uuid: string = generateUUID();
   public buffer: string[] = [];
   
+  // Optional variable count limit (null = unlimited)
+  private maxVariableCount: number | null = null;
+  private debugMode: boolean = false;
+  
   // Procedure state with pooling
   private procStack: ProcStackFrame[] = [];
-  private forStack: Array<{ varName: string; endValue: number; forStartLine: number; endForLine: number }> = [];
+  private forStack: Array<{ varName: string; endValue: number; forStartLine: number; endForLine: number; step: number }> = [];
   private framePool: FramePool = new FramePool();
   private procReturn: Variable = Num(0);
   private shouldReturn: boolean = false;
@@ -366,6 +370,42 @@ export class PanSparkVM {
      this.customOpCodes.set(name.toUpperCase(), handler);
    }
 
+   /**
+    * Set maximum variable count limit
+    * @param limit Maximum number of unique variables allowed (null for unlimited)
+    */
+   public setMaxVariableCount(limit: number | null): void {
+     this.maxVariableCount = limit;
+   }
+
+   /**
+    * Get current variable count limit
+    */
+   public getMaxVariableCount(): number | null {
+     return this.maxVariableCount;
+   }
+
+   /**
+    * Get current variable count
+    */
+   public getVariableCount(): number {
+     return this.variableMemory.size + (this.procStack.length > 0 ? this.procVariableMemory.size : 0);
+   }
+
+   /**
+    * Enable/disable debug/trace mode
+    */
+   public setDebugMode(enabled: boolean): void {
+     this.debugMode = enabled;
+   }
+
+   /**
+    * Check if debug mode is enabled
+    */
+   public isDebugMode(): boolean {
+     return this.debugMode;
+   }
+
    private getCallStack(): string {
      if (this.procStack.length === 0) {
        return 'Global scope';
@@ -404,11 +444,21 @@ export class PanSparkVM {
   }
 
   private setVariableMemory(variableName: string, value: Variable): void {
-    if (this.procLock) {
-      this.procVariableMemory.set(variableName, value);
-      return;
+    const targetMap = this.procLock ? this.procVariableMemory : this.variableMemory;
+    
+    // Check variable count limit (only if creating new variable)
+    if (this.maxVariableCount !== null && !targetMap.has(variableName)) {
+      const currentCount = this.variableMemory.size + this.procVariableMemory.size;
+      if (currentCount >= this.maxVariableCount) {
+        throw new Error(
+          `Variable limit exceeded: Cannot create variable "${variableName}". ` +
+          `Maximum ${this.maxVariableCount} variables allowed (currently have ${currentCount}). ` +
+          `Use FREE to remove unused variables or increase the limit with setMaxVariableCount().`
+        );
+      }
     }
-    this.variableMemory.set(variableName, value);
+    
+    targetMap.set(variableName, value);
   }
 
   private variableCheck(variableName: string, line: number): Variable {
@@ -470,13 +520,16 @@ export class PanSparkVM {
     return procPoint;
   }
 
-  // Single-pass compilation with instruction pre-processing
+   // Single-pass compilation with instruction pre-processing
   public compile(code: string): CompiledInstruction[] {
     let lines = code.split("\n");
     const instructions: CompiledInstruction[] = [];
 
     this.jumpPoints.clear();
     this.procPoints.clear();
+
+    // Track FOR/ENDFOR depth incrementally during compilation
+    let forDepth = 0;
 
     // Pass 1: Tokenize and create instructions
     for (let counter = 0; counter < lines.length; counter++) {
@@ -489,38 +542,23 @@ export class PanSparkVM {
       let tokens = [];
       let match;
       
-       while ((match = TOKEN_REGEX.exec(line)) !== null) {
-         if (match[1] !== undefined) {
-           // Process escape sequences in strings
-           tokens.push(processEscapeSequences(match[1]));
-         } else if (match[2] !== undefined) {
-           tokens.push(`${match[2]}`);
-         } else if (match[3] !== undefined) {
-           tokens.push(">>", match[3]);
-         } else if (match[4] !== undefined) {
-           tokens.push(match[4]);
-         } else {
-           tokens.push(match[5]);
-         }
-       }
+      while ((match = TOKEN_REGEX.exec(line)) !== null) {
+        if (match[1] !== undefined) {
+          // Process escape sequences in strings
+          tokens.push(processEscapeSequences(match[1]));
+        } else if (match[2] !== undefined) {
+          tokens.push(`${match[2]}`);
+        } else if (match[3] !== undefined) {
+          tokens.push(">>", match[3]);
+        } else if (match[4] !== undefined) {
+          tokens.push(match[4]);
+        } else {
+          tokens.push(match[5]);
+        }
+      }
 
       if (tokens.length === 0) {
         continue;
-      }
-
-      let forDepth = 0;
-      for (let counter = 0; counter < instructions.length; counter++) {
-        const instruction = instructions[counter];
-        
-        if (instruction.operation === OpCode.FOR) {
-          forDepth++;
-        }
-        if (instruction.operation === OpCode.ENDFOR) {
-          forDepth--;
-          if (forDepth < 0) {
-            throw new Error(`Unexpected ENDFOR at line ${instruction.line} without matching FOR`);
-          }
-        }
       }
       
       const opName = tokens[0].toUpperCase();
@@ -543,6 +581,16 @@ export class PanSparkVM {
       // Pre-cache custom opcode handler
       if (typeof operation === 'string' && this.customOpCodes.has(operation)) {
         compiledInstruction.customHandler = this.customOpCodes.get(operation);
+      }
+      
+      // Track FOR/ENDFOR depth incrementally (O(1) instead of O(n²))
+      if (operation === OpCode.FOR) {
+        forDepth++;
+      } else if (operation === OpCode.ENDFOR) {
+        forDepth--;
+        if (forDepth < 0) {
+          throw new Error(`Unexpected ENDFOR at line ${counter + 1} without matching FOR`);
+        }
       }
       
       instructions.push(compiledInstruction);
@@ -695,6 +743,17 @@ export class PanSparkVM {
       }
       
       const instruction = instructions[this.counter];
+      
+      // Debug tracing
+      if (this.debugMode) {
+        const opName = typeof instruction.operation === 'string' 
+          ? instruction.operation 
+          : OpCode[instruction.operation];
+        const argsStr = instruction.args.length > 0 
+          ? ` [${instruction.args.slice(0, 3).join(", ")}${instruction.args.length > 3 ? ", ..." : ""}]`
+          : "";
+        this.buffer.push(`[DEBUG] Line ${instruction.line}: ${opName}${argsStr} (tick: ${this.counter})`);
+      }
       
       if (this.shouldReturn && this.procLock) {
         const boundaries = this.getCurrentProcBoundaries();
@@ -1172,20 +1231,37 @@ export class PanSparkVM {
           case OpCode.FOR: {
             const instructionArgs = instruction.args;
             if (instructionArgs.length < 3) {
-              throw new Error(`Invalid FOR syntax at line ${instruction.line}. Expected: FOR variable start end`);
+              throw new Error(`Invalid FOR syntax at line ${instruction.line}. Expected: FOR variable start end [step]`);
             }
             
             const varName = instructionArgs[0];
             const startValue = this.variableCheck(instructionArgs[1], instruction.line);
             const endValue = this.variableCheck(instructionArgs[2], instruction.line);
             
+            // Optional step parameter (default is 1)
+            let step = 1;
+            if (instructionArgs.length >= 4) {
+              const stepValue = this.variableCheck(instructionArgs[3], instruction.line);
+              if (stepValue.type !== PanSparkType.Number) {
+                throw new Error(`FOR loop step must be a number at line ${instruction.line}`);
+              }
+              step = stepValue.value;
+              if (step === 0) {
+                throw new Error(`FOR loop step cannot be zero at line ${instruction.line}`);
+              }
+            }
+            
             if (startValue.type !== PanSparkType.Number || endValue.type !== PanSparkType.Number) {
               throw new Error(`FOR loop bounds must be numbers at line ${instruction.line}`);
             }
             
-             if (endValue.value < startValue.value) {
-               throw new Error(`Invalid FOR loop at line ${instruction.line}. End value must be >= start value`);
-             }
+            // Validate that loop will eventually terminate
+            if (step > 0 && endValue.value < startValue.value) {
+              throw new Error(`Invalid FOR loop at line ${instruction.line}. With positive step, end value must be >= start value`);
+            }
+            if (step < 0 && endValue.value > startValue.value) {
+              throw new Error(`Invalid FOR loop at line ${instruction.line}. With negative step, end value must be <= start value`);
+            }
              
              // Use pre-computed ENDFOR index (optimization - no runtime lookup needed)
              const endForLine = instruction.endForIndex;
@@ -1201,7 +1277,8 @@ export class PanSparkVM {
                varName: varName,
                endValue: endValue.value,
                forStartLine: this.counter,
-               endForLine: endForLine
+               endForLine: endForLine,
+               step: step
              });
             break;
           }
@@ -1217,11 +1294,15 @@ export class PanSparkVM {
               throw new Error(`Loop variable must be a number at line ${instruction.line}`);
             }
             
-            const nextValue = loopVar.value + 1;
+            const nextValue = loopVar.value + loopInfo.step;
             
             // Check if we should continue looping
-            if (nextValue <= loopInfo.endValue) {
-              // Increment the loop variable
+            const shouldContinue = loopInfo.step > 0 
+              ? nextValue <= loopInfo.endValue
+              : nextValue >= loopInfo.endValue;
+            
+            if (shouldContinue) {
+              // Update the loop variable
               this.setVariableMemory(loopInfo.varName, Num(nextValue));
               // Jump back to the instruction after FOR
               this.counter = loopInfo.forStartLine;

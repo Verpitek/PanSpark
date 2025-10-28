@@ -935,6 +935,101 @@ runTest("MATH - Complex unary expression", () => {
   expectOutput(code, ["-7"]);
 });
 
+// ==================== REVERSE FOR LOOPS ====================
+console.log("\n=== REVERSE FOR LOOPS ===\n");
+
+runTest("FOR - Reverse loop with negative step", () => {
+  const code = `
+    FOR i 3 0 -1
+      PRINT i
+    ENDFOR
+  `;
+  expectOutput(code, ["3", "2", "1", "0"]);
+});
+
+runTest("FOR - Reverse loop with step -2", () => {
+  const code = `
+    FOR i 10 0 -2
+      PRINT i
+    ENDFOR
+  `;
+  expectOutput(code, ["10", "8", "6", "4", "2", "0"]);
+});
+
+runTest("FOR - Forward loop with step 2", () => {
+  const code = `
+    FOR i 0 6 2
+      PRINT i
+    ENDFOR
+  `;
+  expectOutput(code, ["0", "2", "4", "6"]);
+});
+
+runTest("FOR - Forward loop with step 3", () => {
+  const code = `
+    FOR i 1 10 3
+      PRINT i
+    ENDFOR
+  `;
+  expectOutput(code, ["1", "4", "7", "10"]);
+});
+
+// ==================== VARIABLE LIMIT ====================
+console.log("\n=== VARIABLE COUNT LIMIT ===\n");
+
+runTest("Variable limit - Allow unlimited variables by default", () => {
+  const code = `
+    SET 1 >> a
+    SET 2 >> b
+    SET 3 >> c
+    SET 4 >> d
+    SET 5 >> e
+    MATH a + b + c + d + e >> total
+    PRINT total
+  `;
+  expectOutput(code, ["15"]);
+});
+
+runTest("Variable limit - Enforce variable count restriction", () => {
+  const vm = new PanSparkVM();
+  vm.setMaxVariableCount(2);
+  const code = `
+    SET 1 >> a
+    SET 2 >> b
+    SET 3 >> c
+  `;
+  try {
+    const program = vm.run(vm.compile(code));
+    while (program.next().done === false) {}
+    throw new Error("Expected code to throw an error but it did not");
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    if (!errorMsg.match(/limit exceeded|Cannot create variable/i)) {
+      throw new Error(
+        `Error message does not match pattern. Expected: /limit exceeded|Cannot create variable/i, Got: ${errorMsg}`
+      );
+    }
+  }
+});
+
+runTest("Variable limit - Allow overwriting existing variables", () => {
+  const vm = new PanSparkVM();
+  vm.setMaxVariableCount(2);
+  const code = `
+    SET 1 >> a
+    SET 2 >> b
+    SET 10 >> a
+    SET 20 >> b
+    MATH a + b >> a
+    PRINT a
+  `;
+  const program = vm.run(vm.compile(code));
+  while (program.next().done === false) {}
+  if (vm.buffer[0] !== "30") {
+    throw new Error(`Expected "30" but got "${vm.buffer[0]}"`);
+  }
+});
+
 // ==================== RESULTS SUMMARY ====================
 console.log("\n" + "=".repeat(50));
 console.log("TEST RESULTS SUMMARY");

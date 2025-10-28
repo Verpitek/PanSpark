@@ -194,20 +194,39 @@ END
 ---
 
 ### `FOR` - Define a FOR loop
-Defines a simple for loop, provides an iteration variable and a range
+Defines a for loop with an iteration variable, start value, end value, and optional step.
 
 **Syntax:**
 ```
-FOR (iterator) (start) (end)
+FOR (iterator) (start) (end) [step]
 ENDFOR
 ```
 
-**Important Notes:**
-- FOR loops can be nested but it will tank performance a little
+**Parameters:**
+- `iterator` - Variable name for the loop counter
+- `start` - Starting value (inclusive)
+- `end` - Ending value (inclusive)
+- `step` - Optional step size (default: 1, can be negative for reverse loops)
 
-**Example:**
+**Important Notes:**
+- FOR loops can be nested but it will impact performance
+- Step must be non-zero and cannot change direction (positive step: end >= start, negative step: end <= start)
+
+**Examples:**
 ```
-FOR i num1 num2
+FOR i 0 5      // Loop from 0 to 5, step 1 (default)
+  PRINT i
+ENDFOR
+
+FOR i 0 10 2   // Loop from 0 to 10, step 2
+  PRINT i
+ENDFOR
+
+FOR i 10 0 -1  // Reverse loop from 10 to 0
+  PRINT i
+ENDFOR
+
+FOR i 10 0 -2  // Reverse loop from 10 to 0, step -2
   PRINT i
 ENDFOR
 ```
@@ -810,18 +829,95 @@ vm1.resetVM();
 
 ---
 
+## Debugging & Performance Features
+
+### Debug Mode
+
+Enable verbose execution tracing to see each instruction as it executes:
+
+```typescript
+const vm = new PanSparkVM();
+vm.setDebugMode(true);
+
+const code = `
+  SET 5 >> x
+  MATH x * 2 >> y
+  PRINT y
+`;
+
+const program = vm.run(vm.compile(code));
+while (program.next().done === false) {}
+
+// Buffer will contain debug output like:
+// [DEBUG] Line 1: SET [5, >>, x] (tick: 0)
+// [DEBUG] Line 2: MATH [x, *, 2, ...] (tick: 1)
+// [DEBUG] Line 3: PRINT [y] (tick: 2)
+// 10
+```
+
+Debug mode shows:
+- Each instruction executed
+- Instruction arguments (first 3 shown)
+- Line number in script
+- Execution tick (instruction counter)
+
+### Variable Count Limiting
+
+Restrict the number of variables a VM can create. Useful for sandboxing or resource management:
+
+```typescript
+const vm = new PanSparkVM();
+
+// Allow maximum 16 unique variables
+vm.setMaxVariableCount(16);
+
+const code = `
+  SET 1 >> a
+  SET 2 >> b
+  // ... up to 16 different variable names allowed
+`;
+
+const program = vm.run(vm.compile(code));
+while (program.next().done === false) {}
+```
+
+**Important Notes:**
+- Limit applies to the number of **unique variable names**, not total memory
+- You can **overwrite** existing variables without counting against the limit
+- Use `FREE` to remove variables and create new ones
+- Set to `null` (default) for unlimited variables
+- Throws error when limit is exceeded
+
+```typescript
+// Get current variable count
+const count = vm.getVariableCount();
+
+// Get current limit
+const limit = vm.getMaxVariableCount();
+```
+
+---
+
 ## Performance Optimizations
 
 The PanSpark VM includes several optimizations:
 
+- **Incremental FOR depth checking**: Depth is tracked during compilation (O(1) per instruction) instead of O(n²) lookup
 - **Pre-compiled instructions**: Jump targets and custom handlers are cached during compilation
 - **FOR loop optimization**: ENDFOR indices are pre-computed during compilation to eliminate runtime O(n) lookups
 - **Inline math operations**: Common operators are inlined for faster execution
 - **Object pooling**: Stack frames for procedure calls are reused
 - **Batch execution**: Sequential non-blocking instructions can be processed together
-- **Recursive depth limiting**: Prevents stack overflow with configurable recursion limits
+- **Recursive depth limiting**: Prevents stack overflow with configurable recursion limits (default: 1000)
+- **Step-based FOR loops**: Support for forward and reverse iteration with configurable step sizes
 
-These optimizations are transparent to script writers but provide significant performance benefits. FOR loops in particular benefit from index pre-computation, making deeply nested loops more efficient.
+### Compilation Performance
+
+- **Single-pass tokenization**: No redundant parsing
+- **Pre-resolved jump points**: Jump targets validated and cached at compile time
+- **Depth tracking optimization**: FOR/ENDFOR matching done in O(n) single pass, not O(n²)
+
+These optimizations are transparent to script writers but provide significant performance benefits, especially for complex programs with nested loops and large scripts.
 
 ---
 
