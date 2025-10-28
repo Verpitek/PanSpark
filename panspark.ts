@@ -151,8 +151,218 @@ class FramePool {
   }
 }
 
+// ============ EXPRESSION AST STRUCTURES ============
+
+// AST Node types for expression evaluation
+interface ASTNode {
+  type: 'number' | 'variable' | 'binary' | 'unary';
+}
+
+interface NumberNode extends ASTNode {
+  type: 'number';
+  value: number;
+}
+
+interface VariableNode extends ASTNode {
+  type: 'variable';
+  name: string;
+}
+
+interface BinaryOpNode extends ASTNode {
+  type: 'binary';
+  operator: string;
+  left: ASTNode;
+  right: ASTNode;
+}
+
+interface UnaryOpNode extends ASTNode {
+  type: 'unary';
+  operator: string;
+  operand: ASTNode;
+}
+
+type ExpressionNode = NumberNode | VariableNode | BinaryOpNode | UnaryOpNode;
+
+// Expression tokenizer for AST parser
+class ExpressionTokenizer {
+  private input: string;
+  private position: number = 0;
+  private tokens: Array<{ type: string; value: string }> = [];
+
+  constructor(input: string) {
+    this.input = input;
+    this.tokenize();
+  }
+
+  private tokenize(): void {
+    while (this.position < this.input.length) {
+      const char = this.input[this.position];
+
+      // Skip whitespace
+      if (/\s/.test(char)) {
+        this.position++;
+        continue;
+      }
+
+      // Numbers
+      if (/\d/.test(char)) {
+        let num = '';
+        while (this.position < this.input.length && /[\d.]/.test(this.input[this.position])) {
+          num += this.input[this.position];
+          this.position++;
+        }
+        this.tokens.push({ type: 'NUMBER', value: num });
+        continue;
+      }
+
+      // Identifiers (variable names)
+      if (/[a-zA-Z_]/.test(char)) {
+        let ident = '';
+        while (this.position < this.input.length && /[a-zA-Z0-9_]/.test(this.input[this.position])) {
+          ident += this.input[this.position];
+          this.position++;
+        }
+        this.tokens.push({ type: 'IDENT', value: ident });
+        continue;
+      }
+
+      // Operators and punctuation
+      const twoCharOp = this.input.substr(this.position, 2);
+      if (twoCharOp === '**' || twoCharOp === '==' || twoCharOp === '!=' || twoCharOp === '<=' || twoCharOp === '>=') {
+        this.tokens.push({ type: 'OP', value: twoCharOp });
+        this.position += 2;
+        continue;
+      }
+
+      const singleChar = this.input[this.position];
+      if ('+-*/%()'.includes(singleChar)) {
+        this.tokens.push({ type: singleChar === '(' ? 'LPAREN' : singleChar === ')' ? 'RPAREN' : 'OP', value: singleChar });
+        this.position++;
+        continue;
+      }
+
+      throw new Error(`Unexpected character: ${singleChar} at position ${this.position}`);
+    }
+
+    this.tokens.push({ type: 'EOF', value: '' });
+  }
+
+  getTokens(): Array<{ type: string; value: string }> {
+    return this.tokens;
+  }
+}
+
+// Recursive descent parser for expressions with operator precedence
+class ExpressionParser {
+  private tokens: Array<{ type: string; value: string }>;
+  private current: number = 0;
+
+  constructor(input: string) {
+    const tokenizer = new ExpressionTokenizer(input);
+    this.tokens = tokenizer.getTokens();
+  }
+
+  parse(): ExpressionNode {
+    return this.parseExpression();
+  }
+
+  private parseExpression(): ExpressionNode {
+    return this.parseAdditive();
+  }
+
+  // Lowest precedence: + and -
+  private parseAdditive(): ExpressionNode {
+    let left = this.parseMultiplicative();
+
+    while (this.peek().value === '+' || this.peek().value === '-') {
+      const op = this.advance().value;
+      const right = this.parseMultiplicative();
+      left = { type: 'binary', operator: op, left, right } as BinaryOpNode;
+    }
+
+    return left;
+  }
+
+  // Medium precedence: *, /, %
+  private parseMultiplicative(): ExpressionNode {
+    let left = this.parsePower();
+
+    while (this.peek().value === '*' || this.peek().value === '/' || this.peek().value === '%') {
+      const op = this.advance().value;
+      const right = this.parsePower();
+      left = { type: 'binary', operator: op, left, right } as BinaryOpNode;
+    }
+
+    return left;
+  }
+
+  // Higher precedence: **
+  private parsePower(): ExpressionNode {
+    let left = this.parseUnary();
+
+    // Power is right-associative: 2**3**2 = 2**(3**2) = 512
+    if (this.peek().value === '**') {
+      const op = this.advance().value;
+      const right = this.parsePower(); // Recursive call for right-associativity
+      left = { type: 'binary', operator: op, left, right } as BinaryOpNode;
+    }
+
+    return left;
+  }
+
+  // Unary operators: -, +
+  private parseUnary(): ExpressionNode {
+    if (this.peek().value === '-' || this.peek().value === '+') {
+      const op = this.advance().value;
+      const operand = this.parseUnary(); // Right associative
+      return { type: 'unary', operator: op, operand } as UnaryOpNode;
+    }
+
+    return this.parsePrimary();
+  }
+
+  // Highest precedence: numbers, variables, parentheses
+  private parsePrimary(): ExpressionNode {
+    const token = this.peek();
+
+    // Numbers
+    if (token.type === 'NUMBER') {
+      this.advance();
+      return { type: 'number', value: parseFloat(token.value) } as NumberNode;
+    }
+
+    // Variables
+    if (token.type === 'IDENT') {
+      const name = this.advance().value;
+      return { type: 'variable', name } as VariableNode;
+    }
+
+    // Parenthesized expressions
+    if (token.type === 'LPAREN') {
+      this.advance();
+      const expr = this.parseExpression();
+      if (this.peek().type !== 'RPAREN') {
+        throw new Error('Expected ) after expression');
+      }
+      this.advance();
+      return expr;
+    }
+
+    throw new Error(`Unexpected token: ${token.value} (type: ${token.type})`);
+  }
+
+  private peek() {
+    return this.tokens[this.current];
+  }
+
+  private advance() {
+    return this.tokens[this.current++];
+  }
+}
+
 // Pre-compiled regex
 // Updated regex to support escape sequences in strings
+// Note: Parentheses are captured to support both CALL syntax and expression parsing
 const TOKEN_REGEX = /"((?:\\.|[^"\\])*)"|\[([^\]]*)\]|\s*>>\s*(\S+)|\(([^)]*)\)|(\S+)/g;
 
 // Helper function to process escape sequences in strings
@@ -222,148 +432,76 @@ export class PanSparkVM {
   constructor() {}
   
    private evaluateExpression(expression: string, line: number): number {
-     // Remove all whitespace
-     expression = expression.replace(/\s+/g, '');
-     
-     // Helper to check if string is an operator
-     const isOperator = (char: string) => ['+', '-', '*', '/', '%'].includes(char);
-     
-     // Tokenize the expression
-     const tokens: string[] = [];
-     let currentToken = '';
-     let parenDepth = 0;
-     
-      for (let i = 0; i < expression.length; i++) {
-        const char = expression[i];
-        
-        if (char === '(') {
-          parenDepth++;
-          currentToken += char;
-        } else if (char === ')') {
-          parenDepth--;
-          currentToken += char;
-        } else if (isOperator(char) && parenDepth === 0) {
-          if (currentToken) tokens.push(currentToken);
-          tokens.push(char);
-          currentToken = '';
-        } else {
-          currentToken += char;
-        }
-      }
-      if (currentToken) tokens.push(currentToken);
-     
-      // Resolve variables and evaluate parentheses recursively
-      const resolvedTokens: (number | string)[] = [];
-      
-      for (let idx = 0; idx < tokens.length; idx++) {
-        const token = tokens[idx];
-        
-        if (isOperator(token)) {
-          resolvedTokens.push(token);
-          continue;
-        }
-        
-        // Handle unary operators (single character)
-        if ((token === '+' || token === '-') && (idx === 0 || isOperator(tokens[idx - 1]))) {
-          resolvedTokens.push(token);
-          continue;
-        }
-        
-        // Handle tokens that start with unary operator like -(a+b)
-        if ((token.startsWith('-') || token.startsWith('+')) && token.length > 1 && (idx === 0 || isOperator(tokens[idx - 1]))) {
-          const op = token[0];
-          const rest = token.slice(1);
-          
-          // Check if this looks like a unary operator followed by content
-          if (rest.startsWith('(')) {
-            resolvedTokens.push(op);
-            // Now resolve the rest
-            if (rest.startsWith('(') && rest.endsWith(')')) {
-              resolvedTokens.push(this.evaluateExpression(rest.slice(1, -1), line));
-            } else {
-              resolvedTokens.push(rest);
-            }
-            continue;
-          }
-        }
-        
-        // Handle parentheses
-        if (token.startsWith('(') && token.endsWith(')')) {
-          resolvedTokens.push(this.evaluateExpression(token.slice(1, -1), line));
-          continue;
-        }
-        
-        // Check if it's a number
-        const num = Number(token);
-        if (!isNaN(num)) {
-          resolvedTokens.push(num);
-          continue;
-        }
-        
-        // It's a variable
-        const variable = this.variableCheck(token, line);
-        if (variable.type !== PanSparkType.Number) {
-          throw new Error(`Variable "${token}" is not a number at line ${line}`);
-        }
-        resolvedTokens.push(variable.value);
-      }
-     
-     // Evaluate with operator precedence (*, /, % before +, -)
-     const evalWithPrecedence = (tokens: (number | string)[]): number => {
-       // Handle unary operators first
-       let i = 0;
-       while (i < tokens.length) {
-         if ((tokens[i] === '+' || tokens[i] === '-') && (i === 0 || isOperator(tokens[i - 1] as string))) {
-           const op = tokens[i] as string;
-           const next = tokens[i + 1] as number;
-           const result = op === '-' ? -next : next;
-           tokens.splice(i, 2, result);
-         } else {
-           i++;
+     // Use the new AST-based evaluator (single-pass, cleaner, more maintainable)
+     return this.evaluateExpressionAST(expression, line);
+   }
+
+   /**
+    * New AST-based expression evaluator (single-pass, cleaner)
+    * Replaces the old multi-pass evaluator with proper precedence parsing
+    */
+   private evaluateExpressionAST(expression: string, line: number): number {
+     try {
+       const parser = new ExpressionParser(expression);
+       const ast = parser.parse();
+       return this.evaluateASTNode(ast, line);
+     } catch (err) {
+       const errorMsg = err instanceof Error ? err.message : String(err);
+       throw new Error(`Expression evaluation error at line ${line}: ${errorMsg}`);
+     }
+   }
+
+   /**
+    * Recursively evaluate an AST node
+    */
+   private evaluateASTNode(node: ExpressionNode, line: number): number {
+     switch (node.type) {
+       case 'number':
+         return (node as NumberNode).value;
+
+       case 'variable': {
+         const varNode = node as VariableNode;
+         const variable = this.variableCheck(varNode.name, line);
+         if (variable.type !== PanSparkType.Number) {
+           throw new Error(`Variable "${varNode.name}" is not a number`);
+         }
+         return variable.value;
+       }
+
+       case 'unary': {
+         const unaryNode = node as UnaryOpNode;
+         const operand = this.evaluateASTNode(unaryNode.operand, line);
+         
+         if (unaryNode.operator === '-') {
+           return -operand;
+         } else if (unaryNode.operator === '+') {
+           return operand;
+         }
+         throw new Error(`Unknown unary operator: ${unaryNode.operator}`);
+       }
+
+       case 'binary': {
+         const binaryNode = node as BinaryOpNode;
+         const left = this.evaluateASTNode(binaryNode.left, line);
+         const right = this.evaluateASTNode(binaryNode.right, line);
+
+         switch (binaryNode.operator) {
+           case '+': return left + right;
+           case '-': return left - right;
+           case '*': return left * right;
+           case '/':
+             if (right === 0) throw new Error(`Division by zero`);
+             return left / right;
+           case '%': return left % right;
+           case '**': return Math.pow(left, right);
+           default:
+             throw new Error(`Unknown binary operator: ${binaryNode.operator}`);
          }
        }
-       
-       // First pass: *, /, %
-       i = 0;
-       while (i < tokens.length) {
-         if (tokens[i] === '*' || tokens[i] === '/' || tokens[i] === '%') {
-           const left = tokens[i - 1] as number;
-           const op = tokens[i] as string;
-           const right = tokens[i + 1] as number;
-           
-           let result: number;
-           if (op === '*') result = left * right;
-           else if (op === '/') {
-             if (right === 0) throw new Error(`Division by zero at line ${line}`);
-             result = left / right;
-           }
-           else result = left % right;
-           
-           tokens.splice(i - 1, 3, result);
-         } else {
-           i++;
-         }
-       }
-       
-       // Second pass: +, -
-       i = 0;
-       while (i < tokens.length) {
-         if (tokens[i] === '+' || tokens[i] === '-') {
-           const left = tokens[i - 1] as number;
-           const op = tokens[i] as string;
-           const right = tokens[i + 1] as number;
-           
-           const result = op === '+' ? left + right : left - right;
-           tokens.splice(i - 1, 3, result);
-         } else {
-           i++;
-         }
-       }
-       
-       return tokens[0] as number;
-     };
-     
-     return evalWithPrecedence(resolvedTokens);
+
+       default:
+         throw new Error(`Unknown AST node type`);
+     }
    }
 
    public registerOpCode(name: string, handler: OpCodeHandler): void {
@@ -547,12 +685,16 @@ export class PanSparkVM {
           // Process escape sequences in strings
           tokens.push(processEscapeSequences(match[1]));
         } else if (match[2] !== undefined) {
+          // Bracket content (list syntax)
           tokens.push(`${match[2]}`);
         } else if (match[3] !== undefined) {
+          // >> operator
           tokens.push(">>", match[3]);
         } else if (match[4] !== undefined) {
+          // Parenthesis content - for CALL syntax, just extract the content
           tokens.push(match[4]);
-        } else {
+        } else if (match[5] !== undefined) {
+          // General token (includes bare parentheses)
           tokens.push(match[5]);
         }
       }
@@ -1088,8 +1230,8 @@ export class PanSparkVM {
                  // Make sure this isn't a more complex expression (e.g., unary minus)
                  // by trying to check if the first arg looks like a valid variable/number
                  const firstArg = expressionArgs[0];
-                 // If it contains parentheses or starts with an operator, it's likely not a simple binary
-                 if (!firstArg.includes('(') && !firstArg.includes(')') && !firstArg.startsWith('-') && !firstArg.startsWith('+')) {
+                 // If it contains spaces, parentheses, or starts with an operator, it's likely not a simple binary
+                 if (!firstArg.includes(' ') && !firstArg.includes('(') && !firstArg.includes(')') && !firstArg.startsWith('-') && !firstArg.startsWith('+')) {
                    const arg1 = this.variableCheck(firstArg, line);
                    const arg2 = this.variableCheck(expressionArgs[2], line);
                    
@@ -1105,7 +1247,35 @@ export class PanSparkVM {
              }
             
             // Multi-term expression - combine all args into a single expression string
-            const expression = expressionArgs.join(' ');
+            // For expressions like "(2 + 3) * (4 + 5)", args become ["2 + 3", "*", "4 + 5"]
+            // We need to wrap args that contain operators back in parentheses
+            const expression = expressionArgs
+              .map((arg) => {
+                if (typeof arg === 'string') {
+                  // Skip operators, ** and min/max
+                  if (['+', '-', '*', '/', '%', '**', 'min', 'max'].includes(arg)) {
+                    return arg;
+                  }
+                  // Skip if it's just a number or variable name
+                  if (!isNaN(Number(arg)) || arg.match(/^[a-zA-Z_][a-zA-Z0-9_]*$/)) {
+                    return arg;
+                  }
+                  // Skip if already wrapped
+                  if (arg.startsWith('(') && arg.endsWith(')')) {
+                    return arg;
+                  }
+                  // Skip if it starts with unary operator and has parentheses (like "-(2" from tokenizer)
+                  if ((arg.startsWith('-') || arg.startsWith('+')) && arg.includes('(')) {
+                    return arg;
+                  }
+                  // It's a complex expression - wrap it
+                  if (arg.includes(' ') || arg.match(/[+\-*/%]/)) {
+                    return `(${arg})`;
+                  }
+                }
+                return arg;
+              })
+              .join(' ');
             const result = this.evaluateExpression(expression, line);
             
             if (Number.isNaN(result)) {

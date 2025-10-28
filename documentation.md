@@ -898,6 +898,40 @@ const limit = vm.getMaxVariableCount();
 
 ---
 
+## Expression Evaluation
+
+### AST-Based Evaluation
+
+PanSpark uses a modern Abstract Syntax Tree (AST) for evaluating mathematical expressions. This provides:
+
+- **Correct operator precedence**: `2 + 3 * 4` evaluates to `14` (not `20`)
+- **Right-associative power**: `2 ** 3 ** 2` evaluates to `512` (not `64`)
+- **Proper parenthesis handling**: Complex nested expressions work correctly
+- **Clean, maintainable code**: Recursive descent parser with clear structure
+
+### Supported Operations
+
+| Operator | Precedence | Description |
+|----------|-----------|-------------|
+| `()` | Highest | Parentheses (grouping) |
+| `-x`, `+x` | High | Unary minus/plus |
+| `**` | High | Exponentiation (right-associative) |
+| `*`, `/`, `%` | Medium | Multiplication, division, modulo |
+| `+`, `-` | Low | Addition, subtraction |
+
+### Examples
+
+```
+MATH 2 + 3 * 4 >> x         // x = 14 (not 20)
+MATH (2 + 3) * 4 >> x       // x = 20
+MATH 2 ** 3 >> x            // x = 8
+MATH 2 ** 3 ** 2 >> x       // x = 512 (right-associative)
+MATH -(5 + 3) >> x          // x = -8 (unary negation on expression)
+MATH 10 / 2 + 3 * 4 >> x    // x = 17
+```
+
+---
+
 ## Performance Optimizations
 
 The PanSpark VM includes several optimizations:

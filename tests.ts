@@ -1030,6 +1030,94 @@ runTest("Variable limit - Allow overwriting existing variables", () => {
   }
 });
 
+// ==================== AST EXPRESSION EVALUATOR ====================
+console.log("\n=== AST EXPRESSION EVALUATOR ===\n");
+
+runTest("AST - Complex expression with multiple operators", () => {
+  const code = `
+    SET 2 >> a
+    SET 3 >> b
+    SET 4 >> c
+    MATH a * b + c >> result
+    PRINT result
+  `;
+  expectOutput(code, ["10"]);
+});
+
+runTest("AST - Expression with power operator", () => {
+  const code = `
+    MATH 2 ** 3 >> result
+    PRINT result
+  `;
+  expectOutput(code, ["8"]);
+});
+
+runTest("AST - Right-associative power", () => {
+  const code = `
+    MATH 2 ** 3 ** 2 >> result
+    PRINT result
+  `;
+  expectOutput(code, ["512"]);
+});
+
+runTest("AST - Nested parentheses", () => {
+  const code = `
+    MATH ((2 + 3) * (4 + 5)) >> result
+    PRINT result
+  `;
+  expectOutput(code, ["45"]);
+});
+
+runTest("AST - Modulo operator", () => {
+  const code = `
+    MATH 17 % 5 >> result
+    PRINT result
+  `;
+  expectOutput(code, ["2"]);
+});
+
+runTest("AST - Unary on complex expression", () => {
+  const code = `
+    SET 5 >> x
+    MATH -(2 * x + 3) >> result
+    PRINT result
+  `;
+  expectOutput(code, ["-13"]);
+});
+
+runTest("AST - Expression with spaces (should be handled)", () => {
+  const code = `
+    MATH 10 + 5 * 2 >> result
+    PRINT result
+  `;
+  expectOutput(code, ["20"]);
+});
+
+runTest("AST - All operators in one expression", () => {
+  const code = `
+    SET 10 >> x
+    MATH x + 5 - 2 * 3 / 2 >> result
+    PRINT result
+  `;
+  expectOutput(code, ["12"]);
+});
+
+runTest("AST - Unary minus followed by parentheses", () => {
+  const code = `
+    MATH -(5 + 3) >> result
+    PRINT result
+  `;
+  expectOutput(code, ["-8"]);
+});
+
+runTest("AST - Multiple unary operators", () => {
+  const code = `
+    MATH - - 5 >> result
+    PRINT result
+  `;
+  expectOutput(code, ["5"]);
+});
+
 // ==================== RESULTS SUMMARY ====================
 console.log("\n" + "=".repeat(50));
 console.log("TEST RESULTS SUMMARY");
