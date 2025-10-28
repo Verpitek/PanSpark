@@ -6,8 +6,6 @@ const startTime = new Date().getTime();
 // Create multiple VM instances to demonstrate isolation
 const vm1 = new PanSparkVM();
 
-console.log("=== VM1 Execution ===");
-
 let code1: string = `
 // ===== BASIC OPERATIONS =====
 ECHO "Program started successfully"
@@ -231,46 +229,31 @@ ECHO "=== Program Execution Complete! ==="
 // ===== END PROGRAM EXECUTION =====
 END`;
 
-const code2 = `
-PROC add (a, b) {
-  MATH a + b >> result
-  RETURN result
-}
-PROC adv (a, b) {
-  CALL add (a, b) >> sum
-  MATH sum + a >> total
-  MATH total + b >> grand_total
-  RETURN grand_total
-}
-CALL adv (10, 20) >> result
-PRINT result`;
+const instructions = vm1.compile(code1);
+const program1 = vm1.run(instructions);
 
-const code3 = `
-FOR i 0 3
-  FOR j 0 3
-    IF j == 2 JUMP inner_break
-    ECHO "Inner loop"
-    JUMP inner_next
-    POINT inner_break
-    BREAK
-    POINT inner_next
-  ENDFOR
-  ECHO "Outer loop"
-ENDFOR`;
-
-const program1 = vm1.run(vm1.compile(code1));
-
-while (program1.next().done === false) {
+for (let j = 0; j < 10; j++) {
+  program1.next();
 }
 
-// Display VM1 output
+const savedState = vm1.saveState(instructions);
+
 for (let line of vm1.buffer) {
   console.log(line);
 }
 
+const vm2 = new PanSparkVM();
+const restoredInstructions = vm2.loadState(savedState)!;
+const gen2 = vm2.run(restoredInstructions);
+
+while (gen2.next().done === false) {}
+
+for (let line of vm2.buffer) {
+  console.log(line);
+}
+
 vm1.resetVM();
-// Get the end time and calculate the duration
+vm2.resetVM();
 const endTime = new Date().getTime();
 const duration = endTime - startTime;
-console.log(vm1.uuid);
 console.log(`\nTime taken to run: ${duration}ms`);
