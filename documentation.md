@@ -454,6 +454,56 @@ END OF MEMORY DUMP
 
 ---
 
+### `MEMSTATS` - Memory Statistics
+Displays or stores memory usage statistics including variable counts, estimated memory usage, procedure depth, and remaining variable capacity.
+
+**Syntax:**
+```
+MEMSTATS
+MEMSTATS >> variable
+```
+
+**Examples:**
+```
+SET 10 >> x
+SET 20 >> y
+SET "hello" >> greeting
+MEMSTATS
+```
+
+**Output Format (to buffer):**
+```
+=== MEMORY STATISTICS ===
+Global Variables: 3
+Local Variables: 0
+Global Memory: ~50 bytes
+Local Memory: ~0 bytes
+Procedure Depth: 0
+Total Ticks: 3
+```
+
+**Example (storing to variable):**
+```
+SET 10 >> x
+MEMSTATS >> stats
+PRINT stats
+```
+
+**Output (to variable):**
+```
+STATS:GlobalVars=1,LocalVars=0,GlobalMem=8B,LocalMem=0B,ProcDepth=0
+```
+
+**Features:**
+- Counts global and local variables
+- Estimates memory usage (rough approximation)
+- Shows current procedure nesting depth
+- Displays remaining variable capacity (if limit is set)
+- Shows total execution ticks
+- Can store stats as a string for programmatic access
+
+---
+
 ### `TICK` - Get Current Tick
 Saves the current execution tick/instruction counter to a variable.
 
@@ -708,13 +758,31 @@ LIST_SORT list1 max  // Sorts: [50, 30, 10]
 
 ## Comments
 
-Lines starting with `//` are treated as comments and are ignored during execution.
+Comments are lines or portions of lines that are ignored during execution. PanSpark supports two comment styles:
 
-**Example:**
+**Full-line comments:** Lines starting with `//` are completely ignored.
+
+**Inline comments:** The `//` marker and everything after it on a line is ignored, allowing you to add comments after instructions.
+
+**Examples:**
 ```
-// This is a comment
-SET 10 >> num1  // This sets num1 to 10
+// This is a full-line comment
+
+SET 10 >> num1           // Inline comment: This sets num1 to 10
+MATH num1 * 2 >> result  // Another inline comment
+PRINT result             // Prints the result
 ```
+
+**Output:**
+```
+20
+```
+
+**Features:**
+- Full-line comments: `// Comment text`
+- Inline comments: Any line can have `// comment` at the end
+- Comments can contain any characters, including multiple `/` marks
+- Comments are stripped before tokenization, so they don't affect performance
 
 ---
 

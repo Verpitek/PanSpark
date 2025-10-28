@@ -58,6 +58,7 @@ enum OpCode {
   FREE,
   NOP,
   MEMDUMP,
+  MEMSTATS,
   TICK,
   ENDPROC,
   FOR,
@@ -672,7 +673,14 @@ export class PanSparkVM {
     // Pass 1: Tokenize and create instructions
     for (let counter = 0; counter < lines.length; counter++) {
       let line = lines[counter].trim();
-      if (line === "" || line.startsWith("//")) {
+      
+      // Strip inline comments (// anywhere in the line)
+      const commentIndex = line.indexOf("//");
+      if (commentIndex !== -1) {
+        line = line.substring(0, commentIndex).trim();
+      }
+      
+      if (line === "") {
         continue;
       }
       
@@ -1151,32 +1159,93 @@ export class PanSparkVM {
              }
              break;
            }
-          case OpCode.MEMDUMP: {
-            this.buffer.push(`DUMPING MEMORY at line ${instruction.line}`);
-            if (this.procLock) {
-              this.buffer.push(`  [PROC "${this.procStack[this.procStack.length - 1].procName}" LOCAL MEMORY - Depth: ${this.procStack.length}]`);
-              if (this.procVariableMemory.size === 0) {
-                this.buffer.push(`    (empty)`);
-              } else {
-                for (const [key, value] of this.procVariableMemory.entries()) {
-                  this.buffer.push(`    ${key}: ${value.value}`);
-                }
-              }
-            }
-            this.buffer.push(`  [GLOBAL MEMORY]`);
-            if (this.variableMemory.size === 0) {
-              this.buffer.push(`    (empty)`);
-            } else {
-              for (const [key, value] of this.variableMemory.entries()) {
-                this.buffer.push(`    ${key}: ${value.value}`);
-              }
-            }
-            this.buffer.push("END OF MEMORY DUMP");
-            break;
-          }
-          case OpCode.NOP: {
-            break;
-          }
+           case OpCode.MEMDUMP: {
+             this.buffer.push(`DUMPING MEMORY at line ${instruction.line}`);
+             if (this.procLock) {
+               this.buffer.push(`  [PROC "${this.procStack[this.procStack.length - 1].procName}" LOCAL MEMORY - Depth: ${this.procStack.length}]`);
+               if (this.procVariableMemory.size === 0) {
+                 this.buffer.push(`    (empty)`);
+               } else {
+                 for (const [key, value] of this.procVariableMemory.entries()) {
+                   this.buffer.push(`    ${key}: ${value.value}`);
+                 }
+               }
+             }
+             this.buffer.push(`  [GLOBAL MEMORY]`);
+             if (this.variableMemory.size === 0) {
+               this.buffer.push(`    (empty)`);
+             } else {
+               for (const [key, value] of this.variableMemory.entries()) {
+                 this.buffer.push(`    ${key}: ${value.value}`);
+               }
+             }
+             this.buffer.push("END OF MEMORY DUMP");
+             break;
+           }
+           case OpCode.MEMSTATS: {
+             // Calculate memory statistics
+             const globalVarCount = this.variableMemory.size;
+             const localVarCount = this.procLock ? this.procVariableMemory.size : 0;
+             
+             // Calculate memory size estimate (rough approximation)
+             let globalMemSize = 0;
+             for (const [key, value] of this.variableMemory.entries()) {
+               globalMemSize += key.length; // variable name
+               if (value.type === PanSparkType.Number) {
+                 globalMemSize += 8; // number size
+               } else if (value.type === PanSparkType.String) {
+                 globalMemSize += value.value.length;
+               } else if (value.type === PanSparkType.List) {
+                 globalMemSize += value.value.length * 8;
+               }
+             }
+             
+             let localMemSize = 0;
+             if (this.procLock) {
+               for (const [key, value] of this.procVariableMemory.entries()) {
+                 localMemSize += key.length;
+                 if (value.type === PanSparkType.Number) {
+                   localMemSize += 8;
+                 } else if (value.type === PanSparkType.String) {
+                   localMemSize += value.value.length;
+                 } else if (value.type === PanSparkType.List) {
+                   localMemSize += value.value.length * 8;
+                 }
+               }
+             }
+             
+             const procDepth = this.procLock ? this.procStack.length : 0;
+             
+             // Check for >> operator to determine if storing to variable
+             const arrowIndex = instruction.args.indexOf(">>");
+             let targetVar = null;
+             if (arrowIndex !== -1 && arrowIndex < instruction.args.length - 1) {
+               targetVar = instruction.args[arrowIndex + 1];
+             }
+             
+             if (targetVar) {
+               // If target variable specified, store stats as a string
+               const stats = `STATS:GlobalVars=${globalVarCount},LocalVars=${localVarCount},GlobalMem=${globalMemSize}B,LocalMem=${localMemSize}B,ProcDepth=${procDepth}`;
+               this.setVariableMemory(targetVar, Str(stats));
+             } else {
+               // Otherwise, print to buffer
+               this.buffer.push(`=== MEMORY STATISTICS ===`);
+               this.buffer.push(`Global Variables: ${globalVarCount}`);
+               this.buffer.push(`Local Variables: ${localVarCount}`);
+               this.buffer.push(`Global Memory: ~${globalMemSize} bytes`);
+               this.buffer.push(`Local Memory: ~${localMemSize} bytes`);
+               this.buffer.push(`Procedure Depth: ${procDepth}`);
+               if (this.maxVariableCount > 0) {
+                 const remainingVars = this.maxVariableCount - globalVarCount - localVarCount;
+                 this.buffer.push(`Variable Limit: ${this.maxVariableCount} (${remainingVars} remaining)`);
+               }
+               this.buffer.push(`Total Ticks: ${this.counter}`);
+             }
+             break;
+           }
+           case OpCode.NOP: {
+             break;
+           }
           case OpCode.TICK: {
             this.setVariableMemory(instruction.args[0], Num(this.counter));
             break;

@@ -1118,6 +1118,83 @@ runTest("AST - Multiple unary operators", () => {
   expectOutput(code, ["5"]);
 });
 
+runTest("MEMSTATS - Basic memory statistics", () => {
+  const code = `
+    SET 10 >> x
+    SET 20 >> y
+    SET "hello" >> greeting
+    MEMSTATS
+  `;
+  const output = runCode(code);
+  const fullOutput = output.join("\n");
+  if (!fullOutput.includes("Global Variables: 3")) {
+    throw new Error(`Expected "Global Variables: 3" in output, got: ${JSON.stringify(output)}`);
+  }
+});
+
+runTest("MEMSTATS - Store stats in variable", () => {
+  const code = `
+    SET 10 >> x
+    SET 20 >> y
+    MEMSTATS >> stats
+    PRINT stats
+  `;
+  const output = runCode(code);
+  if (!output[0].includes("STATS:")) {
+    throw new Error(`Expected stats string starting with "STATS:", got: ${output[0]}`);
+  }
+  if (!output[0].includes("GlobalVars=2")) {
+    throw new Error(`Expected "GlobalVars=2" in stats, got: ${output[0]}`);
+  }
+});
+
+runTest("MEMSTATS - With variable limit", () => {
+  const code = `
+    SET 10 >> x
+    MEMSTATS
+  `;
+  const vm = new PanSparkVM();
+  vm.setMaxVariableCount(5);
+  const program = vm.run(vm.compile(code));
+  while (program.next().done === false) {}
+  const fullOutput = vm.buffer.join("\n");
+  if (!fullOutput.includes("Variable Limit: 5")) {
+    throw new Error(`Expected "Variable Limit: 5" in output, got: ${JSON.stringify(vm.buffer)}`);
+  }
+});
+
+runTest("Inline comments - Basic inline comment", () => {
+  const code = `
+    SET 10 >> x  // This is a comment
+    PRINT x      // Print the variable
+  `;
+  expectOutput(code, ["10"]);
+});
+
+runTest("Inline comments - Comment after operation", () => {
+  const code = `
+    MATH 5 + 3 >> result  // 5 plus 3
+    PRINT result
+  `;
+  expectOutput(code, ["8"]);
+});
+
+runTest("Inline comments - Comment with special characters", () => {
+  const code = `
+    SET 42 >> answer  // The answer to everything (and more)!
+    PRINT answer
+  `;
+  expectOutput(code, ["42"]);
+});
+
+runTest("Inline comments - Multiple slashes in comment", () => {
+  const code = `
+    SET 100 >> x  // This is a comment with // multiple // slashes
+    PRINT x
+  `;
+  expectOutput(code, ["100"]);
+});
+
 // ==================== RESULTS SUMMARY ====================
 console.log("\n" + "=".repeat(50));
 console.log("TEST RESULTS SUMMARY");
