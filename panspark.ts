@@ -379,7 +379,7 @@ function processEscapeSequences(str: string): string {
 
 export class PanSparkVM {
   // Max recursion depth to prevent stack overflow
-  private static readonly MAX_RECURSION_DEPTH = 1000;
+  public maxRecursion = 1000;
   
   // Instance state
   private jumpPoints: Map<string, number> = new Map();
@@ -1595,9 +1595,9 @@ export class PanSparkVM {
             }
             
             // Check recursion depth limit to prevent stack overflow
-            if (this.procStack.length >= PanSparkVM.MAX_RECURSION_DEPTH) {
+            if (this.procStack.length >= this.maxRecursion) {
               throw new Error(
-                `Maximum recursion depth (${PanSparkVM.MAX_RECURSION_DEPTH}) exceeded at line ${instruction.line}. ` +
+                `Maximum recursion depth (${this.maxRecursion}) exceeded at line ${instruction.line}. ` +
                 `Current call stack depth: ${this.procStack.length}. Check for infinite recursion.`
               );
             }
