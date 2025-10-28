@@ -1,0 +1,807 @@
+# PanSpark Scripting Language Documentation
+
+Welcome to the PanSpark scripting language! PanSpark is a tick-based interpreted OpCode scripting language designed for predictable performance and ease of parsing.
+
+## Language Overview
+
+By design, PanSpark executes only one operation per line of code, making it highly predictable and easier to understand. The syntax is strict and specific, allowing for faster parsing and higher execution speed.
+
+### Key Features
+
+- **Type System**: PanSpark has three internal types for developers:
+  - `Number`: JavaScript Number type
+  - `String`: Text strings
+  - `List`: Arrays of numbers
+  
+  However, for script writers, the language primarily works with numbers for most operations.
+
+- **Data Piping**: The `>>` operator means piping or moving data. For example:
+  ```
+  SET 10 >> num1
+  ```
+  This moves the value `10` to a variable named `num1`.
+
+- **Buffer Output**: PanSpark does not print anything directly. All output is saved to a buffer that can be retrieved after the program finishes running.
+
+## OpCode Reference
+
+### `SET` - Variable Assignment
+Allows you to set a variable from a Number or an existing variable. If only a variable name is provided, it defaults to 0.
+
+**Syntax:**
+```
+SET (Number/variable) >> <variable>
+SET <variable>
+```
+
+**Example:**
+```
+SET 10 >> num1
+SET num1 >> result
+SET counter        // Sets counter to 0
+```
+
+---
+
+### `MATH` - Mathematical Operations
+Performs mathematical operations on numbers or variables.
+
+**Syntax (Binary operators):**
+```
+MATH (Number/variable) (operator) (Number/variable) >> (variable)
+```
+
+**Syntax (Unary operators):**
+```
+MATH (Number/variable) (operator) >> (variable)
+```
+
+**Available Operators:**
+- **Binary operators**: `+`, `-`, `*`, `/`, `%`, `**`, `min`, `max`
+- **Unary operators**: `sqrt`, `log`, `floor`, `ceil`, `sin`, `rand`, `cos`, `tan`, `abs`, `round`, `log10`, `exp`
+
+**Examples:**
+```
+MATH 10 + 20 >> result
+MATH num1 * num2 >> result
+MATH num1 ceil >> result
+MATH 16 sqrt >> result
+MATH a * 2 + b / c - 3 >> result
+```
+
+---
+
+### `PRINT` - Print Variables
+Prints variables or numbers to the output buffer.
+
+**Syntax:**
+```
+PRINT (Number/variable)
+```
+
+**Example:**
+```
+PRINT 10
+PRINT result
+```
+
+---
+
+### `ECHO` - Print Strings
+Prints string-based messages to the output buffer.
+
+**Syntax:**
+```
+ECHO "(text)"
+```
+
+**Example:**
+```
+ECHO "Hello World!"
+ECHO "Computation complete"
+```
+
+---
+
+### `POINT` - Define Jump Location
+Sets a named location within the code that can be jumped to.
+
+**Syntax:**
+```
+POINT (name)
+```
+
+**Example:**
+```
+POINT loop
+POINT something
+```
+
+---
+
+### `JUMP` - Unconditional Jump
+Jumps to an existing point unconditionally.
+
+**Syntax:**
+```
+JUMP (name)
+```
+
+**Example:**
+```
+JUMP loop
+JUMP something
+```
+
+**Note:** When inside a procedure (PROC), you cannot jump outside the procedure's scope.
+
+---
+
+### `IF` - Conditional Jump
+Conditionally jumps to a point based on a comparison.
+
+**Syntax:**
+```
+IF (Number/variable) (operator) (Number/variable) >> (point)
+```
+
+**Available Operators:**
+- `>` - Greater than
+- `<` - Less than
+- `==` - Equal to
+- `!=` - Not equal to
+- `>=` - Greater than or equal to
+- `<=` - Less than or equal to
+
+**Examples:**
+```
+IF 5 < 10 >> loop
+IF num1 == num2 >> something
+IF counter >= 100 >> end_loop
+```
+
+---
+
+### `END` - End Program
+Terminates the program execution.
+
+**Syntax:**
+```
+END
+```
+
+**Example:**
+```
+END
+```
+
+---
+
+### `FOR` - Define a FOR loop
+Defines a simple for loop, provides an iteration variable and a range
+
+**Syntax:**
+```
+FOR (iterator) (start) (end)
+ENDFOR
+```
+
+**Important Notes:**
+- FOR loops can be nested but it will tank performance a little
+
+**Example:**
+```
+FOR i num1 num2
+  PRINT i
+ENDFOR
+```
+
+---
+
+### `BREAK` - Breaks out of a FOR loop
+
+**Syntax:**
+```
+BREAK
+```
+
+**Example:**
+```
+FOR i num1 num2
+  PRINT i
+  BREAK
+ENDFOR
+```
+
+---
+
+### `CONTINUE` -  Continues a FOR loop
+
+**Syntax:**
+```
+CONTINUE
+```
+
+**Example:**
+```
+FOR i 0 5
+  IF i == 2 JUMP skip
+  PRINT i
+  JUMP next
+  POINT skip
+  CONTINUE
+  POINT next
+ENDFOR
+```
+
+---
+
+### `PROC` - Define Procedure
+Defines a procedure (function) with isolated memory scope. Procedures can accept parameters and return values.
+
+**Syntax:**
+```
+PROC (name) ((variables separated by ,)) {
+  // procedure body
+}
+```
+
+**Important Notes:**
+- The name must be separated from the argument parentheses
+- Use curly brackets `{}` to define the procedure body
+- The closing brace `}` must be on its own line
+- Procedures have their own isolated memory layer
+- Cannot jump outside of a procedure's scope
+- Arguments defined in the procedure can be used within it
+
+**Example:**
+```
+PROC add (a, b)
+  MATH a + b >> result
+  RETURN result
+ENDPROC
+
+PROC square (x)
+  MATH x * x >> squared
+  RETURN squared
+ENDPROC
+```
+
+---
+
+### `RETURN` - Return from Procedure
+Returns a value from a procedure. If no value is specified, returns 0.
+
+**Syntax:**
+```
+RETURN (Number/variable)
+RETURN
+```
+
+**Example:**
+```
+PROC add (a, b)
+  MATH a + b >> result
+  RETURN result
+ENDPROC
+
+PROC doSomething ()
+  ECHO "Done"
+  RETURN
+ENDPROC
+```
+
+---
+
+### `CALL` - Call Procedure
+Calls a defined procedure with arguments and optionally stores the return value.
+
+**Syntax:**
+```
+CALL (PROC name) ((arguments)) >> (variable)
+CALL (PROC name) ((arguments))
+```
+
+**Example:**
+```
+CALL add (1, 3) >> result
+CALL square (5) >> squared_value
+PRINT result
+```
+
+---
+
+### `WAIT` - Wait for Ticks
+Pauses execution for a specified number of ticks.
+
+**Syntax:**
+```
+WAIT (Number/variable)
+```
+
+**Example:**
+```
+WAIT 100
+WAIT delay_time
+```
+
+---
+
+### `INC` - Increment
+Increments a variable by 1.
+
+**Syntax:**
+```
+INC (variable)
+```
+
+**Example:**
+```
+SET 0 >> counter
+INC counter
+PRINT counter  // outputs: 1
+```
+
+---
+
+### `DEC` - Decrement
+Decreases a variable by 1.
+
+**Syntax:**
+```
+DEC (variable)
+```
+
+**Example:**
+```
+SET 10 >> counter
+DEC counter
+PRINT counter  // outputs: 9
+```
+
+---
+
+### `FREE` - Free Memory
+Frees a variable from memory, removing it completely.
+
+**Syntax:**
+```
+FREE (variable)
+```
+
+**Example:**
+```
+SET 100 >> temp
+PRINT temp
+FREE temp
+```
+
+---
+
+### `NOP` - No Operation
+No operation instruction. Does nothing. Useful as a placeholder or for timing.
+
+**Syntax:**
+```
+NOP
+```
+
+**Example:**
+```
+NOP
+```
+
+---
+
+### `MEMDUMP` - Memory Dump
+Dumps all available variable memory to the output buffer. Shows both global memory and procedure-local memory (if inside a procedure).
+
+**Syntax:**
+```
+MEMDUMP
+```
+
+**Example:**
+```
+SET 10 >> x
+SET 20 >> y
+MEMDUMP
+```
+
+**Output Format:**
+```
+DUMPING MEMORY at line X
+  [GLOBAL MEMORY]
+    x: 10
+    y: 20
+END OF MEMORY DUMP
+```
+
+---
+
+### `TICK` - Get Current Tick
+Saves the current execution tick/instruction counter to a variable.
+
+**Syntax:**
+```
+TICK (variable)
+```
+
+**Example:**
+```
+TICK current_tick
+PRINT current_tick
+```
+
+---
+
+### `IMPORT` - Import Module
+Imports a module containing custom OpCodes. Modules must be loaded programmatically before the script runs.
+
+**Syntax:**
+```
+IMPORT "(module_name)"
+```
+
+**Example:**
+```
+IMPORT "list"
+IMPORT "custom_module"
+```
+
+---
+
+## List Operations
+
+PanSpark provides built-in operations for working with lists of numbers.
+
+### `LIST_CREATE` - Create List
+Creates a new empty list variable.
+
+**Syntax:**
+```
+LIST_CREATE (list_name)
+```
+
+**Example:**
+```
+LIST_CREATE list1
+LIST_CREATE myNumbers
+```
+
+---
+
+### `LIST_PUSH` - Add Element
+Adds a number to the end of a list.
+
+**Syntax:**
+```
+LIST_PUSH (Number/variable) >> (list_name)
+```
+
+**Example:**
+```
+LIST_CREATE list1
+LIST_PUSH 10 >> list1
+LIST_PUSH 20 >> list1
+LIST_PUSH num1 >> list1
+```
+
+---
+
+### `LIST_SET` - Set Element
+Sets a value at a specific index in the list.
+
+**Syntax:**
+```
+LIST_SET (Number/variable) (index) >> (list_name)
+```
+
+**Example:**
+```
+LIST_CREATE list1
+LIST_PUSH 10 >> list1
+LIST_PUSH 20 >> list1
+LIST_SET 999 0 >> list1  // Sets first element to 999
+```
+
+---
+
+### `LIST_GET` - Get Element
+Gets a value from a specific index in the list and stores it in a variable.
+
+**Syntax:**
+```
+LIST_GET (list_name) (index) >> (variable)
+```
+
+**Example:**
+```
+LIST_CREATE list1
+LIST_PUSH 10 >> list1
+LIST_PUSH 20 >> list1
+LIST_GET list1 0 >> first_element
+PRINT first_element  // outputs: 10
+```
+
+---
+
+### `LIST_SORT` - Sort List
+Sorts the list in ascending or descending order.
+
+**Syntax:**
+```
+LIST_SORT (list_name) (min/max)
+```
+
+**Parameters:**
+- `min` - Sorts from lowest to highest (ascending)
+- `max` - Sorts from highest to lowest (descending)
+
+**Example:**
+```
+LIST_CREATE list1
+LIST_PUSH 50 >> list1
+LIST_PUSH 10 >> list1
+LIST_PUSH 30 >> list1
+LIST_SORT list1 min  // Sorts: [10, 30, 50]
+LIST_SORT list1 max  // Sorts: [50, 30, 10]
+```
+
+---
+
+## Comments
+
+Lines starting with `//` are treated as comments and are ignored during execution.
+
+**Example:**
+```
+// This is a comment
+SET 10 >> num1  // This sets num1 to 10
+```
+
+---
+
+## Creating Custom OpCodes
+
+You can extend PanSpark by creating custom OpCodes. Here's how:
+
+### Module Structure
+
+Create a module file (e.g., `mymodule.ts`) with a `registerWith` function:
+
+```typescript
+import { PanSparkVM, OpCodeHandler, InterpreterContext } from './vm';
+
+export function registerWith(vm: PanSparkVM): void {
+  vm.registerOpCode("MY_OPCODE", (args, context) => {
+    // Your implementation here
+    // args: string[] - The arguments passed to your opcode
+    // context: InterpreterContext - Access to the interpreter
+  });
+}
+```
+
+### InterpreterContext Interface
+
+The context object provides access to:
+
+```typescript
+export interface InterpreterContext {
+  buffer: string[];                        // Output buffer
+  variableMemory: Map<string, Variable>;   // Global variable memory
+  procVariableMemory: Map<string, Variable>; // Procedure-local memory
+  procLock: boolean;                       // True if inside a procedure
+  getVar: (name: string, line: number) => Variable;  // Get a variable safely
+  setVar: (name: string, value: Variable) => void;   // Set a variable
+}
+```
+
+### Variable Types
+
+Variables use a discriminated union type:
+
+```typescript
+type Variable =
+  | { type: PanSparkType.Number; value: number }
+  | { type: PanSparkType.String; value: string }
+  | { type: PanSparkType.List; value: number[] };
+```
+
+Helper functions:
+```typescript
+const Num = (value: number): Variable => ({ type: PanSparkType.Number, value });
+const Str = (value: string): Variable => ({ type: PanSparkType.String, value });
+const List = (value: number[]): Variable => ({ type: PanSparkType.List, value });
+```
+
+### Example: Custom OpCode
+
+```typescript
+export function registerWith(vm: PanSparkVM): void {
+  vm.registerOpCode("DOUBLE", (args, context) => {
+    // DOUBLE varName >> result
+    const inputVar = context.getVar(args[0], 0);
+    
+    if (inputVar.type === PanSparkType.Number) {
+      const doubled = Num(inputVar.value * 2);
+      context.setVar(args[2], doubled);
+    } else {
+      throw new Error("DOUBLE requires a numeric variable");
+    }
+  });
+}
+```
+
+Usage in PanSpark:
+```
+IMPORT "mymodule"
+SET 5 >> x
+DOUBLE x >> result
+PRINT result  // outputs: 10
+```
+
+---
+
+## Running PanSpark
+
+### Basic Usage
+
+```typescript
+import { PanSparkVM } from "./panspark";
+
+const vm1 = new PanSparkVM();
+
+let code: string = `
+SET 10 >> num1
+SET 20 >> num2
+SET result
+MATH num1 + num2 >> result
+PRINT result`;
+
+const program1 = vm1.run(vm1.compile(code));
+
+while (program1.next().done === false) {
+}
+
+for (let line of vm1.buffer) {
+  console.log(line);
+}
+
+vm1.resetVM();
+```
+
+---
+
+## Performance Optimizations
+
+The PanSpark VM includes several optimizations:
+
+- **Pre-compiled instructions**: Jump targets and custom handlers are cached during compilation
+- **Inline math operations**: Common operators are inlined for faster execution
+- **Object pooling**: Stack frames for procedure calls are reused
+- **Batch execution**: Sequential non-blocking instructions can be processed together
+
+These optimizations are transparent to script writers but provide significant performance benefits.
+
+---
+
+## Error Handling
+
+PanSpark provides detailed error messages including:
+- Line numbers where errors occurred
+- Description of what went wrong
+- Suggestions for fixing common issues
+
+Common errors:
+- **Undefined variable**: Variable not set before use
+- **Undefined jump point**: JUMP/IF referencing non-existent POINT
+- **Out of scope jump**: Attempting to JUMP outside procedure boundaries
+- **Type mismatch**: Using string/list where number expected
+- **Invalid syntax**: Malformed OpCode usage
+
+---
+
+## Best Practices
+
+1. **Initialize variables**: Always use `SET` before using a variable (or use `SET varname` to default to 0)
+2. **Free unused variables**: Use `FREE` to clean up memory when variables are no longer needed
+3. **Use procedures**: Break complex logic into reusable procedures
+4. **Comment your code**: Use `//` to explain complex sections
+5. **Check bounds**: When using list operations, validate indices
+6. **Handle errors**: Use conditional checks before operations that might fail
+
+---
+
+## Example Programs
+
+### Simple Counter
+```
+SET counter  // Defaults to 0
+POINT loop
+  PRINT counter
+  INC counter
+  IF counter < 10 >> loop
+END
+```
+
+### Factorial Calculator
+```
+PROC factorial (n) {
+  IF n <= 1 >> base_case
+  MATH n - 1 >> n_minus_1
+  CALL factorial (n_minus_1) >> result
+  MATH n * result >> final
+  RETURN final
+  
+  POINT base_case
+  RETURN 1
+}
+
+SET 5 >> input
+CALL factorial (input) >> result
+PRINT result  // outputs: 120
+```
+
+### Fibonacci Sequence
+```
+SET 0 >> a
+SET 1 >> b
+SET counter  // Defaults to 0
+
+POINT loop
+  PRINT a
+  MATH a + b >> temp
+  SET b >> a
+  SET temp >> b
+  INC counter
+  IF counter < 10 >> loop
+END
+```
+
+### Nested for loop example
+```
+FOR i 0 3
+  FOR j 0 3
+    IF j == 2 JUMP inner_break
+    ECHO "Inner loop"
+    JUMP inner_next
+    POINT inner_break
+    BREAK
+    POINT inner_next
+  ENDFOR
+  ECHO "Outer loop"
+ENDFOR
+```
+
+### List Operations Example
+```
+// Create and populate a list
+LIST_CREATE numbers
+LIST_PUSH 50 >> numbers
+LIST_PUSH 10 >> numbers
+LIST_PUSH 30 >> numbers
+LIST_PUSH 40 >> numbers
+LIST_PUSH 20 >> numbers
+
+// Get and print first element
+LIST_GET numbers 0 >> first
+ECHO "First element:"
+PRINT first
+
+// Sort ascending
+LIST_SORT numbers min
+ECHO "Sorted (ascending):"
+PRINT numbers
+
+// Sort descending
+LIST_SORT numbers max
+ECHO "Sorted (descending):"
+PRINT numbers
+
+// Modify an element
+LIST_SET 999 2 >> numbers
+ECHO "After setting index 2 to 999:"
+PRINT numbers
+```
+
