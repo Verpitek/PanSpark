@@ -276,15 +276,14 @@ Defines a procedure (function) with isolated memory scope. Procedures can accept
 
 **Syntax:**
 ```
-PROC (name) ((variables separated by ,)) {
+PROC (name) ((variables separated by ,))
   // procedure body
-}
+ENDPROC
 ```
 
 **Important Notes:**
 - The name must be separated from the argument parentheses
-- Use curly brackets `{}` to define the procedure body
-- The closing brace `}` must be on its own line
+- Use `ENDPROC` to mark the end of the procedure
 - Procedures have their own isolated memory layer
 - Cannot jump outside of a procedure's scope
 - Arguments defined in the procedure can be used within it
@@ -1062,7 +1061,7 @@ END
 
 ### Factorial Calculator
 ```
-PROC factorial (n) {
+PROC factorial (n)
   IF n <= 1 >> base_case
   MATH n - 1 >> n_minus_1
   CALL factorial (n_minus_1) >> result
@@ -1071,7 +1070,7 @@ PROC factorial (n) {
   
   POINT base_case
   RETURN 1
-}
+ENDPROC
 
 SET 5 >> input
 CALL factorial (input) >> result
