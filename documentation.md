@@ -519,22 +519,6 @@ PRINT current_tick
 
 ---
 
-### `IMPORT` - Import Module
-Imports a module containing custom OpCodes. Modules must be loaded programmatically before the script runs.
-
-**Syntax:**
-```
-IMPORT "(module_name)"
-```
-
-**Example:**
-```
-IMPORT "list"
-IMPORT "custom_module"
-```
-
----
-
 ## String Operations
 
 PanSpark provides built-in operations for working with strings.
