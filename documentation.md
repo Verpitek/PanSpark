@@ -26,11 +26,11 @@ By design, PanSpark executes only one operation per line of code, making it high
 ## OpCode Reference
 
 ### `SET` - Variable Assignment
-Allows you to set a variable from a Number or an existing variable. If only a variable name is provided, it defaults to 0.
+Allows you to set a variable from a Number, String literal, or an existing variable. If only a variable name is provided, it defaults to 0.
 
 **Syntax:**
 ```
-SET (Number/variable) >> <variable>
+SET (Number/String/variable) >> <variable>
 SET <variable>
 ```
 
@@ -39,6 +39,16 @@ SET <variable>
 SET 10 >> num1
 SET num1 >> result
 SET counter        // Sets counter to 0
+SET "Hello" >> greeting
+SET "World" >> name
+```
+
+**String Literals:**
+Strings are enclosed in double quotes and support escape sequences (see String Operations section).
+```
+SET "Hello World" >> message
+SET "Line1\nLine2" >> multiline
+SET "C:\\Users\\Documents" >> path
 ```
 
 ---
@@ -67,7 +77,13 @@ MATH num1 * num2 >> result
 MATH num1 ceil >> result
 MATH 16 sqrt >> result
 MATH a * 2 + b / c - 3 >> result
+MATH -5 >> neg  // Unary minus
+MATH -(a + b) >> negated  // Unary minus on expression
 ```
+
+**Unary Operators:**
+- `-value` - Negation
+- `+value` - Identity (returns the same value)
 
 ---
 
@@ -451,6 +467,127 @@ IMPORT "custom_module"
 
 ---
 
+## String Operations
+
+PanSpark provides built-in operations for working with strings.
+
+### `CONCAT` - Concatenate Strings
+Concatenates two strings together and stores the result in a variable.
+
+**Syntax:**
+```
+CONCAT (string/number) (string/number) >> (variable)
+```
+
+**Example:**
+```
+SET "Hello" >> greeting
+SET " World" >> name
+CONCAT greeting name >> message
+ECHO message  // outputs: "Hello World"
+
+SET 42 >> answer
+CONCAT "The answer is " answer >> full_message
+ECHO full_message  // outputs: "The answer is 42"
+```
+
+---
+
+### `STRLEN` - Get String Length
+Returns the length of a string.
+
+**Syntax:**
+```
+STRLEN (string/number/variable) >> (variable)
+```
+
+**Example:**
+```
+SET "Hello" >> text
+STRLEN text >> len
+PRINT len  // outputs: 5
+
+STRLEN "PanSpark" >> lang_len
+PRINT lang_len  // outputs: 8
+```
+
+---
+
+### `SUBSTR` - Extract Substring
+Extracts a substring from a string between two indices.
+
+**Syntax:**
+```
+SUBSTR (string/number/variable) (start_index) (end_index) >> (variable)
+```
+
+**Parameters:**
+- `start_index` - Starting position (inclusive)
+- `end_index` - Ending position (exclusive)
+
+**Example:**
+```
+SET "Hello World" >> text
+SUBSTR text 0 5 >> first_word
+ECHO first_word  // outputs: "Hello"
+
+SUBSTR text 6 11 >> second_word
+ECHO second_word  // outputs: "World"
+
+SET "JavaScript" >> lang
+SUBSTR lang 4 10 >> portion
+ECHO portion  // outputs: "Script"
+```
+
+---
+
+### String Escape Sequences
+
+Strings support the following escape sequences:
+
+| Escape | Description |
+|--------|-------------|
+| `\"` | Double quote |
+| `\\` | Backslash |
+| `\n` | Newline |
+| `\t` | Tab character |
+| `\r` | Carriage return |
+
+**Examples:**
+```
+ECHO "Line 1\nLine 2"           // Outputs two lines
+ECHO "Column1\tColumn2"         // Outputs with tab separator
+ECHO "She said \"Hello\""       // Outputs: She said "Hello"
+ECHO "Path: C:\\Users\\Docs"    // Outputs: Path: C:\Users\Docs
+```
+
+---
+
+### Unary Operator Enhancements
+
+The MATH operation now supports unary plus and minus operators:
+
+**Unary Minus:**
+```
+MATH -5 >> x
+PRINT x  // outputs: -5
+
+SET 10 >> num
+MATH -num >> negated
+PRINT negated  // outputs: -10
+
+MATH -(3 + 4) >> result
+PRINT result  // outputs: -7
+```
+
+**Unary Plus:**
+```
+MATH +5 >> x
+PRINT x  // outputs: 5
+```
+
+---
+
 ## List Operations
 
 PanSpark provides built-in operations for working with lists of numbers.
@@ -678,11 +815,13 @@ vm1.resetVM();
 The PanSpark VM includes several optimizations:
 
 - **Pre-compiled instructions**: Jump targets and custom handlers are cached during compilation
+- **FOR loop optimization**: ENDFOR indices are pre-computed during compilation to eliminate runtime O(n) lookups
 - **Inline math operations**: Common operators are inlined for faster execution
 - **Object pooling**: Stack frames for procedure calls are reused
 - **Batch execution**: Sequential non-blocking instructions can be processed together
+- **Recursive depth limiting**: Prevents stack overflow with configurable recursion limits
 
-These optimizations are transparent to script writers but provide significant performance benefits.
+These optimizations are transparent to script writers but provide significant performance benefits. FOR loops in particular benefit from index pre-computation, making deeply nested loops more efficient.
 
 ---
 
@@ -803,5 +942,42 @@ PRINT numbers
 LIST_SET 999 2 >> numbers
 ECHO "After setting index 2 to 999:"
 PRINT numbers
+```
+
+### String Operations Example
+```
+// Basic string concatenation
+SET "Hello" >> greeting
+SET " World" >> target
+CONCAT greeting target >> message
+ECHO message  // outputs: "Hello World"
+
+// String length
+STRLEN message >> len
+ECHO "Length:"
+PRINT len
+
+// Substring operations
+SUBSTR message 0 5 >> first_part
+ECHO first_part  // outputs: "Hello"
+
+SUBSTR message 6 11 >> second_part
+ECHO second_part  // outputs: "World"
+
+// String with escape sequences
+SET "Line1\nLine2\nLine3" >> multiline
+ECHO multiline
+
+// Combining numbers and strings
+SET 42 >> answer
+SET "The answer is " >> prefix
+CONCAT prefix answer >> full_answer
+ECHO full_answer  // outputs: "The answer is 42"
+
+// Using unary operators
+MATH -10 >> negative
+SET "Value: " >> label
+CONCAT label negative >> result
+ECHO result  // outputs: "Value: -10"
 ```
 

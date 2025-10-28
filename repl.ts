@@ -44,17 +44,29 @@ async function startREPL() {
       } else {
         console.error(`File not found: ${filePath}`);
       }
-    } else {
-      // Otherwise treat it as inline code
-      try {
-        const instructions = vm.compile(line);
-        for (const _ of vm.run(instructions)) {}
-        vm.getBuffer().forEach(l => console.log(l));
-        vm.buffer = [];
-      } catch (err) {
-        console.error('Error:', err.message);
-      }
-    }
+     } else {
+       // Otherwise treat it as inline code
+       if (line.length > 0) {
+         try {
+           const instructions = vm.compile(line);
+           for (const _ of vm.run(instructions)) {}
+           vm.getBuffer().forEach(l => console.log(l));
+           vm.buffer = [];
+         } catch (err) {
+           const errorMsg = err instanceof Error ? err.message : String(err);
+           console.error('❌ Error:', errorMsg);
+           
+           // Provide helpful suggestions
+           if (errorMsg.includes('not defined')) {
+             console.error('  💡 Tip: Did you forget to SET a variable first?');
+           } else if (errorMsg.includes('Invalid syntax')) {
+             console.error('  💡 Tip: Check your OpCode name and syntax. Type "help" for usage.');
+           } else if (errorMsg.includes('Jump target')) {
+             console.error('  💡 Tip: Make sure POINT labels are defined before jumping to them.');
+           }
+         }
+       }
+     }
 
     rl.prompt();
   }).on('close', () => {

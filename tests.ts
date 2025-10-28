@@ -780,6 +780,161 @@ runTest("END - Terminate program", () => {
   expectOutput(code, ["Start"]);
 });
 
+// ==================== STRING OPERATIONS ====================
+console.log("\n=== STRING OPERATIONS ===\n");
+
+runTest("CONCAT - Basic string concatenation", () => {
+  const code = `
+    SET "Hello" >> str1
+    SET " World" >> str2
+    CONCAT str1 str2 >> result
+    PRINT result
+  `;
+  expectOutput(code, ["Hello World"]);
+});
+
+runTest("CONCAT - Number to string conversion", () => {
+  const code = `
+    SET 42 >> num
+    SET "!" >> exclamation
+    CONCAT num exclamation >> result
+    PRINT result
+  `;
+  expectOutput(code, ["42!"]);
+});
+
+runTest("STRLEN - String length", () => {
+  const code = `
+    SET "Hello" >> str
+    STRLEN str >> len
+    PRINT len
+  `;
+  expectOutput(code, ["5"]);
+});
+
+runTest("STRLEN - Empty string", () => {
+  const code = `
+    SET "" >> empty
+    STRLEN empty >> len
+    PRINT len
+  `;
+  expectOutput(code, ["0"]);
+});
+
+runTest("STRLEN - Number length", () => {
+  const code = `
+    SET 12345 >> num
+    STRLEN num >> len
+    PRINT len
+  `;
+  expectOutput(code, ["5"]);
+});
+
+runTest("SUBSTR - Substring extraction", () => {
+  const code = `
+    SET "Hello World" >> str
+    SUBSTR str 0 5 >> result
+    PRINT result
+  `;
+  expectOutput(code, ["Hello"]);
+});
+
+runTest("SUBSTR - Middle substring", () => {
+  const code = `
+    SET "JavaScript" >> str
+    SUBSTR str 4 10 >> result
+    PRINT result
+  `;
+  expectOutput(code, ["Script"]);
+});
+
+runTest("SUBSTR - Full string", () => {
+  const code = `
+    SET "Test" >> str
+    SUBSTR str 0 4 >> result
+    PRINT result
+  `;
+  expectOutput(code, ["Test"]);
+});
+
+// ==================== STRING ESCAPE SEQUENCES ====================
+console.log("\n=== STRING ESCAPE SEQUENCES ===\n");
+
+runTest("String escape - Newline character", () => {
+  const code = `
+    ECHO "Line1\\nLine2"
+  `;
+  expectOutput(code, ["Line1\nLine2"]);
+});
+
+runTest("String escape - Tab character", () => {
+  const code = `
+    ECHO "Col1\\tCol2"
+  `;
+  expectOutput(code, ["Col1\tCol2"]);
+});
+
+runTest("String escape - Escaped quotes", () => {
+  const code = `
+    ECHO "She said \\"Hello\\""
+  `;
+  expectOutput(code, ['She said "Hello"']);
+});
+
+runTest("String escape - Escaped backslash", () => {
+  const code = `
+    ECHO "Path: C:\\\\Users\\\\Documents"
+  `;
+  expectOutput(code, ["Path: C:\\Users\\Documents"]);
+});
+
+// ==================== UNARY OPERATORS ====================
+console.log("\n=== UNARY OPERATORS ===\n");
+
+runTest("MATH - Unary minus", () => {
+  const code = `
+    MATH -5 >> x
+    PRINT x
+  `;
+  expectOutput(code, ["-5"]);
+});
+
+runTest("MATH - Unary minus with variable", () => {
+  const code = `
+    SET 10 >> num
+    MATH -num >> x
+    PRINT x
+  `;
+  expectOutput(code, ["-10"]);
+});
+
+runTest("MATH - Unary plus (identity)", () => {
+  const code = `
+    MATH +5 >> x
+    PRINT x
+  `;
+  expectOutput(code, ["5"]);
+});
+
+runTest("MATH - Unary minus in expression", () => {
+  const code = `
+    MATH -5 + 10 >> x
+    PRINT x
+  `;
+  expectOutput(code, ["5"]);
+});
+
+runTest("MATH - Complex unary expression", () => {
+  const code = `
+    SET 3 >> a
+    SET 4 >> b
+    MATH -(a + b) >> x
+    PRINT x
+  `;
+  // Note: This test uses -(a + b) which tests unary negation on parenthesized expression
+  expectOutput(code, ["-7"]);
+});
+
 // ==================== RESULTS SUMMARY ====================
 console.log("\n" + "=".repeat(50));
 console.log("TEST RESULTS SUMMARY");
