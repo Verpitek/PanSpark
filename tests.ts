@@ -748,18 +748,6 @@ runTest("Invalid jump target throws error", () => {
   expectError(code, /not found/i);
 });
 
-runTest("Recursion depth limit enforced", () => {
-  const code = `
-    PROC recurse (n)
-      MATH n + 1 >> n
-      CALL recurse (n) >> result
-      RETURN result
-    ENDPROC
-    CALL recurse (0) >> result
-  `;
-  expectError(code, /recursion|depth/i);
-});
-
 runTest("Procedure without return defaults to 0", () => {
   const code = `
     PROC no_return ()

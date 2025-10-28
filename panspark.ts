@@ -378,9 +378,6 @@ function processEscapeSequences(str: string): string {
 }
 
 export class PanSparkVM {
-  // Max recursion depth to prevent stack overflow
-  public maxRecursion = 1000;
-  
   // Instance state
   private jumpPoints: Map<string, number> = new Map();
   private procPoints: Map<string, [number, number]> = new Map();
@@ -1594,15 +1591,7 @@ export class PanSparkVM {
               throw new Error(`Invalid CALL syntax at line ${instruction.line}. Expected: CALL procName (args) or CALL procName (args) >> result`);
             }
             
-            // Check recursion depth limit to prevent stack overflow
-            if (this.procStack.length >= this.maxRecursion) {
-              throw new Error(
-                `Maximum recursion depth (${this.maxRecursion}) exceeded at line ${instruction.line}. ` +
-                `Current call stack depth: ${this.procStack.length}. Check for infinite recursion.`
-              );
-            }
-            
-            const procName = instructionArgs[0];
+             const procName = instructionArgs[0];
             const procPoint = this.procPointCheck(procName, instruction.line);
             
             let returnValueTarget: string | null = null;
