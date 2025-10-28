@@ -1683,8 +1683,12 @@ export class PanSparkVM {
    /**
     * Saves the entire VM execution state to a serialized string
     * Includes variables, jump points, procedures, execution position, and all runtime state
+    * 
+    * @param includeInstructions - If true, also saves the compiled instructions (required for resuming)
+    * @returns Serialized state string (respects 32767 character limit per chunk)
+    * @throws Error if state exceeds maximum chunk size
     */
-   public saveState(): string {
+   public saveState(instructions?: CompiledInstruction[]): string {
      const state = {
        uuid: this.uuid,
        counter: this.counter,
@@ -1707,17 +1711,44 @@ export class PanSparkVM {
        buffer: this.buffer,
        maxVariableCount: this.maxVariableCount,
        debugMode: this.debugMode,
+       instructions: instructions ? instructions.map(inst => ({
+         operation: inst.operation,
+         args: inst.args,
+         line: inst.line,
+         jumpTarget: inst.jumpTarget,
+         endForIndex: inst.endForIndex,
+       })) : null,
      };
      
-     return JSON.stringify(state);
+     const serialized = JSON.stringify(state);
+     const MAX_SIZE = 32767;
+     
+     if (serialized.length > MAX_SIZE) {
+       throw new Error(
+         `State size (${serialized.length} characters) exceeds maximum limit of ${MAX_SIZE} characters. ` +
+         `Clear the output buffer, reduce variables, or use multiple checkpoints.`
+       );
+     }
+     
+     return serialized;
    }
 
    /**
     * Loads a previously saved VM state from a serialized string
     * Restores execution from where it left off with all runtime state intact
+    * 
+    * @param serializedState - The saved state string from saveState()
+    * @returns The compiled instructions if they were included in the state, null otherwise
+    * @throws Error if deserialization fails or state is corrupted
     */
-   public loadState(serializedState: string): void {
+   public loadState(serializedState: string): CompiledInstruction[] | null {
      try {
+       if (serializedState.length > 32767) {
+         throw new Error(
+           `Serialized state (${serializedState.length} characters) exceeds maximum limit of 32767 characters`
+         );
+       }
+       
        const state = JSON.parse(serializedState);
        
        this.uuid = state.uuid;
@@ -1741,6 +1772,13 @@ export class PanSparkVM {
        this.buffer = state.buffer;
        this.maxVariableCount = state.maxVariableCount;
        this.debugMode = state.debugMode;
+       
+       // Return instructions if they were saved
+       if (state.instructions) {
+         return state.instructions as CompiledInstruction[];
+       }
+       
+       return null;
      } catch (err) {
        const errorMsg = err instanceof Error ? err.message : String(err);
        throw new Error(`Failed to load VM state: ${errorMsg}`);
