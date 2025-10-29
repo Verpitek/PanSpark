@@ -1533,7 +1533,7 @@ runTest("STR_TRIM - Remove whitespace", () => {
 runTest("STR_REPLACE - Replace text", () => {
    const code = `
      SET "hello world" >> str
-     STR_REPLACE str world universe >> replaced
+     STR_REPLACE str "world" "universe" >> replaced
      PRINT replaced
    `;
    expectOutput(code, ["hello universe"]);

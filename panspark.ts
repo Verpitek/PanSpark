@@ -619,29 +619,58 @@ export class PanSparkVM {
     targetMap.set(variableName, value);
   }
 
-  private variableCheck(variableName: string, line: number): Variable {
-    if (this.procLock) {
-      const procValue = this.procVariableMemory.get(variableName);
-      if (procValue !== undefined) {
-        return procValue;
-      }
-    }
+   private variableCheck(variableName: string, line: number): Variable {
+     if (this.procLock) {
+       const procValue = this.procVariableMemory.get(variableName);
+       if (procValue !== undefined) {
+         return procValue;
+       }
+     }
 
-    const globalValue = this.variableMemory.get(variableName);
-    if (globalValue !== undefined) {
-      return globalValue;
-    }
+     const globalValue = this.variableMemory.get(variableName);
+     if (globalValue !== undefined) {
+       return globalValue;
+     }
 
-    const numericValue = Number(variableName);
-    if (!isNaN(numericValue)) {
-      return {
-        type: PanSparkType.Number,
-        value: numericValue
-      }
-    }
-    
-    throw new Error(`Variable "${variableName}" is not defined at line ${line}`);
-  }
+     const numericValue = Number(variableName);
+     if (!isNaN(numericValue)) {
+       return {
+         type: PanSparkType.Number,
+         value: numericValue
+       }
+     }
+     
+     throw new Error(`Variable "${variableName}" is not defined at line ${line}`);
+   }
+
+   // Flexible variable checker - treats non-existent identifiers as string literals
+   private variableOrStringLiteral(value: string, line: number): Variable {
+     if (this.procLock) {
+       const procValue = this.procVariableMemory.get(value);
+       if (procValue !== undefined) {
+         return procValue;
+       }
+     }
+
+     const globalValue = this.variableMemory.get(value);
+     if (globalValue !== undefined) {
+       return globalValue;
+     }
+
+     const numericValue = Number(value);
+     if (!isNaN(numericValue)) {
+       return {
+         type: PanSparkType.Number,
+         value: numericValue
+       }
+     }
+
+     // If it's not a variable or number, treat it as a string literal
+     return {
+       type: PanSparkType.String,
+       value: value
+     }
+   }
 
   private jumpPointCheck(jumpPointName: string, line: number): number {
     const jumpPoint = this.jumpPoints.get(jumpPointName);
@@ -1433,9 +1462,9 @@ export class PanSparkVM {
                 throw new Error(`Invalid STR_REPLACE syntax at line ${instruction.line}. Expected: STR_REPLACE string find replace >> result`);
               }
               
-              const str = this.variableCheck(instruction.args[0], instruction.line);
-              const find = this.variableCheck(instruction.args[1], instruction.line);
-              const replace = this.variableCheck(instruction.args[2], instruction.line);
+              const str = this.variableOrStringLiteral(instruction.args[0], instruction.line);
+              const find = this.variableOrStringLiteral(instruction.args[1], instruction.line);
+              const replace = this.variableOrStringLiteral(instruction.args[2], instruction.line);
               const destVar = instruction.args[arrowIndex + 1];
               
               let strVal = '';
@@ -1476,8 +1505,8 @@ export class PanSparkVM {
                 throw new Error(`Invalid STR_CONTAINS syntax at line ${instruction.line}. Expected: STR_CONTAINS string substring >> result`);
               }
               
-              const str = this.variableCheck(instruction.args[0], instruction.line);
-              const search = this.variableCheck(instruction.args[1], instruction.line);
+              const str = this.variableOrStringLiteral(instruction.args[0], instruction.line);
+              const search = this.variableOrStringLiteral(instruction.args[1], instruction.line);
               const destVar = instruction.args[arrowIndex + 1];
               
               let strVal = '';
