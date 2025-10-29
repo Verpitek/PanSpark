@@ -71,10 +71,28 @@ enum OpCode {
    LIST_GET,
    LIST_PUSH,
    LIST_SORT,
+   LIST_LENGTH,
+   LIST_REVERSE,
+   LIST_FIND,
+   LIST_INDEX_OF,
+   LIST_CONTAINS,
+   LIST_REMOVE,
    
    CONCAT,
    STRLEN,
-   SUBSTR
+   SUBSTR,
+   STR_UPPER,
+   STR_LOWER,
+   STR_TRIM,
+   STR_REPLACE,
+   STR_CONTAINS,
+   STR_CHAR,
+   
+   TYPEOF,
+   TRY,
+   CATCH,
+   ENDTRY,
+   THROW
 }
 
 // Pre-compiled instruction with resolved indices
@@ -389,12 +407,16 @@ export class PanSparkVM {
   private maxVariableCount: number | null = null;
   private debugMode: boolean = false;
   
-  // Procedure state with pooling
-  private procStack: ProcStackFrame[] = [];
-  private forStack: Array<{ varName: string; endValue: number; forStartLine: number; endForLine: number; step: number }> = [];
-  private framePool: FramePool = new FramePool();
-  private procReturn: Variable = Num(0);
-  private shouldReturn: boolean = false;
+   // Procedure state with pooling
+   private procStack: ProcStackFrame[] = [];
+   private forStack: Array<{ varName: string; endValue: number; forStartLine: number; endForLine: number; step: number }> = [];
+   private framePool: FramePool = new FramePool();
+   private procReturn: Variable = Num(0);
+   private shouldReturn: boolean = false;
+   
+   // TRY-CATCH state for error handling
+   private tryStack: Array<{ startLine: number; catchLine: number; endLine: number; errorVariable: string | null; errorOccurred: boolean }> = [];
+   private lastError: string = "";
   
   // Execution state
   private waitTicks: number = 0;
@@ -664,124 +686,159 @@ export class PanSparkVM {
     this.jumpPoints.clear();
     this.procPoints.clear();
 
-    // Track FOR/ENDFOR depth incrementally during compilation
-    let forDepth = 0;
+     // Track FOR/ENDFOR and TRY/CATCH depth incrementally during compilation
+     let forDepth = 0;
+     let tryDepth = 0;
 
-    // Pass 1: Tokenize and create instructions
-    for (let counter = 0; counter < lines.length; counter++) {
-      let line = lines[counter].trim();
-      
-      // Strip inline comments (// anywhere in the line)
-      const commentIndex = line.indexOf("//");
-      if (commentIndex !== -1) {
-        line = line.substring(0, commentIndex).trim();
-      }
-      
-      if (line === "") {
-        continue;
-      }
-      
-      TOKEN_REGEX.lastIndex = 0; // Reset regex state
-      let tokens = [];
-      let match;
-      
-      while ((match = TOKEN_REGEX.exec(line)) !== null) {
-        if (match[1] !== undefined) {
-          // Process escape sequences in strings
-          tokens.push(processEscapeSequences(match[1]));
-        } else if (match[2] !== undefined) {
-          // Bracket content (list syntax)
-          tokens.push(`${match[2]}`);
-        } else if (match[3] !== undefined) {
-          // >> operator
-          tokens.push(">>", match[3]);
-        } else if (match[4] !== undefined) {
-          // Parenthesis content - for CALL syntax, just extract the content
-          tokens.push(match[4]);
-        } else if (match[5] !== undefined) {
-          // General token (includes bare parentheses)
-          tokens.push(match[5]);
-        }
-      }
+     // Pass 1: Tokenize and create instructions
+     for (let counter = 0; counter < lines.length; counter++) {
+       let line = lines[counter].trim();
+       
+       // Strip inline comments (// anywhere in the line)
+       const commentIndex = line.indexOf("//");
+       if (commentIndex !== -1) {
+         line = line.substring(0, commentIndex).trim();
+       }
+       
+       if (line === "") {
+         continue;
+       }
+       
+       TOKEN_REGEX.lastIndex = 0; // Reset regex state
+       let tokens = [];
+       let match;
+       
+       while ((match = TOKEN_REGEX.exec(line)) !== null) {
+         if (match[1] !== undefined) {
+           // Process escape sequences in strings
+           tokens.push(processEscapeSequences(match[1]));
+         } else if (match[2] !== undefined) {
+           // Bracket content (list syntax)
+           tokens.push(`${match[2]}`);
+         } else if (match[3] !== undefined) {
+           // >> operator
+           tokens.push(">>", match[3]);
+         } else if (match[4] !== undefined) {
+           // Parenthesis content - for CALL syntax, just extract the content
+           tokens.push(match[4]);
+         } else if (match[5] !== undefined) {
+           // General token (includes bare parentheses)
+           tokens.push(match[5]);
+         }
+       }
 
-      if (tokens.length === 0) {
-        continue;
-      }
-      
-      const opName = tokens[0].toUpperCase();
-      let operation: OpCode | string | undefined = OpCode[tokens[0].toUpperCase() as keyof typeof OpCode];
-      
-      if (operation === undefined && this.customOpCodes.has(opName)) {
-        operation = opName;
-      }
-      
-      if (operation === undefined) {
-        operation = opName;
-      }
-      
-      const compiledInstruction: CompiledInstruction = {
-        operation,
-        args: tokens.slice(1),
-        line: counter + 1,
-      };
-      
-      // Pre-cache custom opcode handler
-      if (typeof operation === 'string' && this.customOpCodes.has(operation)) {
-        compiledInstruction.customHandler = this.customOpCodes.get(operation);
-      }
-      
-      // Track FOR/ENDFOR depth incrementally (O(1) instead of O(n²))
-      if (operation === OpCode.FOR) {
-        forDepth++;
-      } else if (operation === OpCode.ENDFOR) {
-        forDepth--;
-        if (forDepth < 0) {
-          throw new Error(`Unexpected ENDFOR at line ${counter + 1} without matching FOR`);
-        }
-      }
-      
-      instructions.push(compiledInstruction);
-    }
+       if (tokens.length === 0) {
+         continue;
+       }
+       
+       const opName = tokens[0].toUpperCase();
+       let operation: OpCode | string | undefined = OpCode[tokens[0].toUpperCase() as keyof typeof OpCode];
+       
+       if (operation === undefined && this.customOpCodes.has(opName)) {
+         operation = opName;
+       }
+       
+       if (operation === undefined) {
+         operation = opName;
+       }
+       
+       const compiledInstruction: CompiledInstruction = {
+         operation,
+         args: tokens.slice(1),
+         line: counter + 1,
+       };
+       
+       // Pre-cache custom opcode handler
+       if (typeof operation === 'string' && this.customOpCodes.has(operation)) {
+         compiledInstruction.customHandler = this.customOpCodes.get(operation);
+       }
+       
+       // Track FOR/ENDFOR depth incrementally (O(1) instead of O(n²))
+       if (operation === OpCode.FOR) {
+         forDepth++;
+       } else if (operation === OpCode.ENDFOR) {
+         forDepth--;
+         if (forDepth < 0) {
+           throw new Error(`Unexpected ENDFOR at line ${counter + 1} without matching FOR`);
+         }
+       }
+       
+       // Track TRY/CATCH/ENDTRY depth
+       if (operation === OpCode.TRY) {
+         tryDepth++;
+       } else if (operation === OpCode.ENDTRY) {
+         tryDepth--;
+         if (tryDepth < 0) {
+           throw new Error(`Unexpected ENDTRY at line ${counter + 1} without matching TRY`);
+         }
+       }
+       
+       instructions.push(compiledInstruction);
+     }
     
-    // Pass 2: Register jump points and procedure boundaries
-    let procPoint = {
-      name: "",
-      startLine: 0,
-      endLine: 0
-    };
-    let procOpen = false;
-    
-    for (let counter = 0; counter < instructions.length; counter++) {
-      const instruction = instructions[counter];
-      
-      if (instruction.operation === OpCode.POINT) {
-        this.jumpPoints.set(instruction.args[0], counter);
-      }
-      
-      if (!procOpen) {
-        if (instruction.operation === OpCode.PROC) {
-          procPoint = {
-            name: instruction.args[0],
-            startLine: counter,
-            endLine: 0
-          };
-          procOpen = true;
-        }
-      }
-      
-      if (instruction.operation === OpCode.ENDPROC  ) {
-        if (!procOpen) {
-          throw new Error(`Unexpected '}' at line ${instruction.line} without matching PROC`);
-        }
-        procPoint.endLine = counter;
-        this.procPoints.set(procPoint.name, [procPoint.startLine, procPoint.endLine]);
-        procOpen = false;
-      }
-    }
+     // Pass 2: Register jump points and procedure boundaries
+     let procPoint = {
+       name: "",
+       startLine: 0,
+       endLine: 0
+     };
+     let procOpen = false;
+     let tryBlockStack: Array<{ startLine: number; catchIndex: number | null; errorVar: string | null }> = [];
+     
+     for (let counter = 0; counter < instructions.length; counter++) {
+       const instruction = instructions[counter];
+       
+       if (instruction.operation === OpCode.POINT) {
+         this.jumpPoints.set(instruction.args[0], counter);
+       }
+       
+       if (!procOpen) {
+         if (instruction.operation === OpCode.PROC) {
+           procPoint = {
+             name: instruction.args[0],
+             startLine: counter,
+             endLine: 0
+           };
+           procOpen = true;
+         }
+       }
+       
+       if (instruction.operation === OpCode.ENDPROC  ) {
+         if (!procOpen) {
+           throw new Error(`Unexpected '}' at line ${instruction.line} without matching PROC`);
+         }
+         procPoint.endLine = counter;
+         this.procPoints.set(procPoint.name, [procPoint.startLine, procPoint.endLine]);
+         procOpen = false;
+       }
+       
+       // Track TRY blocks for compilation
+       if (instruction.operation === OpCode.TRY) {
+         tryBlockStack.push({
+           startLine: counter,
+           catchIndex: null,
+           errorVar: instruction.args[0] || null
+         });
+       } else if (instruction.operation === OpCode.CATCH) {
+         if (tryBlockStack.length === 0) {
+           throw new Error(`Unexpected CATCH at line ${instruction.line} without matching TRY`);
+         }
+         tryBlockStack[tryBlockStack.length - 1].catchIndex = counter;
+       } else if (instruction.operation === OpCode.ENDTRY) {
+         if (tryBlockStack.length === 0) {
+           throw new Error(`Unexpected ENDTRY at line ${instruction.line} without matching TRY`);
+         }
+         tryBlockStack.pop();
+       }
+     }
 
-    if (procOpen) {
-      throw new Error(`Unclosed PROC "${procPoint.name}" starting at line ${procPoint.startLine + 1}`);
-    }
+     if (procOpen) {
+       throw new Error(`Unclosed PROC "${procPoint.name}" starting at line ${procPoint.startLine + 1}`);
+     }
+     
+     if (tryBlockStack.length > 0) {
+       throw new Error(`Unclosed TRY block starting at line ${tryBlockStack[0].startLine + 1}`);
+     }
 
      // Pass 3: Pre-resolve jump targets and validate they exist
      for (let i = 0; i < instructions.length; i++) {
@@ -796,15 +853,42 @@ export class PanSparkVM {
            );
          }
          instruction.jumpTarget = target;
-       } else if (instruction.operation === OpCode.IF && instruction.args.length >= 5) {
-         const target = this.jumpPoints.get(instruction.args[4]);
-         if (target === undefined) {
-           throw new Error(
-             `Jump target "${instruction.args[4]}" not found at line ${instruction.line}. ` +
-             `Valid targets are: ${Array.from(this.jumpPoints.keys()).join(', ') || '(none defined)'}`
-           );
-         }
-         instruction.jumpTarget = target;
+         } else if (instruction.operation === OpCode.IF) {
+           // Find the jump target (last argument after >>)
+           let jumpTargetStr = '';
+           const arrowToken = '>>'; 
+           const arrowIndex = instruction.args.indexOf(arrowToken);
+           if (arrowIndex !== -1 && arrowIndex < instruction.args.length - 1) {
+             jumpTargetStr = instruction.args[instruction.args.length - 1];
+           } else if (instruction.args.length >= 5 && !['AND', 'OR'].includes(instruction.args[3])) {
+             // Legacy: standard if without >>
+             jumpTargetStr = instruction.args[4];
+           } else if (instruction.args.length >= 9) {
+             // AND/OR case where target might be at position 7 or later
+             jumpTargetStr = instruction.args[instruction.args.length - 1];
+           }
+           
+           if (jumpTargetStr) {
+             const target = this.jumpPoints.get(jumpTargetStr);
+             if (target === undefined) {
+               throw new Error(
+                 `Jump target "${jumpTargetStr}" not found at line ${instruction.line}. ` +
+                 `Valid targets are: ${Array.from(this.jumpPoints.keys()).join(', ') || '(none defined)'}`
+               );
+             }
+             instruction.jumpTarget = target;
+           }
+          
+          if (jumpTargetStr) {
+            const target = this.jumpPoints.get(jumpTargetStr);
+            if (target === undefined) {
+              throw new Error(
+                `Jump target "${jumpTargetStr}" not found at line ${instruction.line}. ` +
+                `Valid targets are: ${Array.from(this.jumpPoints.keys()).join(', ') || '(none defined)'}`
+              );
+            }
+            instruction.jumpTarget = target;
+          }
        } else if (instruction.operation === OpCode.FOR) {
          // Pre-compute matching ENDFOR index for optimization
          let endForIndex = -1;
@@ -927,9 +1011,10 @@ export class PanSparkVM {
         } else {
           throw new Error(`Unknown opcode '${instruction.operation}' at line ${instruction.line}. Make sure the required module is imported.`);
         }
-      } else {
-        switch (instruction.operation) {
-          case OpCode.SET: {
+       } else {
+         try {
+         switch (instruction.operation) {
+           case OpCode.SET: {
              if (instruction.args.length === 1) {
                if (isNaN(Number(instruction.args[0]))) {
                  this.setVariableMemory(instruction.args[0], Num(0));
@@ -1047,21 +1132,148 @@ export class PanSparkVM {
             this.setVariableMemory(instruction.args[3], list);
             break;
           }
-          case OpCode.LIST_SORT: {
-            const list = this.variableCheck(instruction.args[0], instruction.line);
-            if (list.type !== PanSparkType.List) {
-              throw new Error(`The provided list is not a list at line ${instruction.line}`)
+           case OpCode.LIST_SORT: {
+             const list = this.variableCheck(instruction.args[0], instruction.line);
+             if (list.type !== PanSparkType.List) {
+               throw new Error(`The provided list is not a list at line ${instruction.line}`)
+             }
+             
+             if (instruction.args[1] === "min") {
+               list.value.sort((a, b) => a - b);
+             } else if (instruction.args[1] === "max") {
+               list.value.sort((a, b) => b - a);
+             } else {
+               throw new Error(`Invalid sort order at line ${instruction.line}`);
+             }
+              break;
             }
-            
-            if (instruction.args[1] === "min") {
-              list.value.sort((a, b) => a - b);
-            } else if (instruction.args[1] === "max") {
-              list.value.sort((a, b) => b - a);
-            } else {
-              throw new Error(`Invalid sort order at line ${instruction.line}`);
+            case OpCode.LIST_LENGTH: {
+              // LIST_LENGTH list >> result
+              const arrowIndex = instruction.args.indexOf(">>");
+              if (arrowIndex === -1 || arrowIndex === 0 || arrowIndex === instruction.args.length - 1) {
+                throw new Error(`Invalid LIST_LENGTH syntax at line ${instruction.line}. Expected: LIST_LENGTH list >> result`);
+              }
+              
+              const list = this.variableCheck(instruction.args[0], instruction.line);
+              const destVar = instruction.args[arrowIndex + 1];
+              
+              if (list.type !== PanSparkType.List) {
+                throw new Error(`The provided variable is not a list at line ${instruction.line}`);
+              }
+              
+              this.setVariableMemory(destVar, Num(list.value.length));
+              break;
             }
-             break;
-           }
+            case OpCode.LIST_REVERSE: {
+              // LIST_REVERSE list >> result
+              const arrowIndex = instruction.args.indexOf(">>");
+              if (arrowIndex === -1 || arrowIndex === 0 || arrowIndex === instruction.args.length - 1) {
+                throw new Error(`Invalid LIST_REVERSE syntax at line ${instruction.line}. Expected: LIST_REVERSE list >> result`);
+              }
+              
+              const list = this.variableCheck(instruction.args[0], instruction.line);
+              const destVar = instruction.args[arrowIndex + 1];
+              
+              if (list.type !== PanSparkType.List) {
+                throw new Error(`The provided variable is not a list at line ${instruction.line}`);
+              }
+              
+              const reversed = [...list.value].reverse();
+              this.setVariableMemory(destVar, List(reversed));
+              break;
+            }
+            case OpCode.LIST_FIND: {
+              // LIST_FIND list value >> result (returns index or -1)
+              const arrowIndex = instruction.args.indexOf(">>");
+              if (arrowIndex === -1 || arrowIndex < 2 || arrowIndex === instruction.args.length - 1) {
+                throw new Error(`Invalid LIST_FIND syntax at line ${instruction.line}. Expected: LIST_FIND list value >> result`);
+              }
+              
+              const list = this.variableCheck(instruction.args[0], instruction.line);
+              const value = this.variableCheck(instruction.args[1], instruction.line);
+              const destVar = instruction.args[arrowIndex + 1];
+              
+              if (list.type !== PanSparkType.List) {
+                throw new Error(`The provided variable is not a list at line ${instruction.line}`);
+              }
+              if (value.type !== PanSparkType.Number) {
+                throw new Error(`The search value must be a number at line ${instruction.line}`);
+              }
+              
+              const index = list.value.indexOf(value.value);
+              this.setVariableMemory(destVar, Num(index));
+              break;
+            }
+            case OpCode.LIST_INDEX_OF: {
+              // LIST_INDEX_OF list value >> result (alias for LIST_FIND)
+              const arrowIndex = instruction.args.indexOf(">>");
+              if (arrowIndex === -1 || arrowIndex < 2 || arrowIndex === instruction.args.length - 1) {
+                throw new Error(`Invalid LIST_INDEX_OF syntax at line ${instruction.line}. Expected: LIST_INDEX_OF list value >> result`);
+              }
+              
+              const list = this.variableCheck(instruction.args[0], instruction.line);
+              const value = this.variableCheck(instruction.args[1], instruction.line);
+              const destVar = instruction.args[arrowIndex + 1];
+              
+              if (list.type !== PanSparkType.List) {
+                throw new Error(`The provided variable is not a list at line ${instruction.line}`);
+              }
+              if (value.type !== PanSparkType.Number) {
+                throw new Error(`The search value must be a number at line ${instruction.line}`);
+              }
+              
+              const index = list.value.indexOf(value.value);
+              this.setVariableMemory(destVar, Num(index));
+              break;
+            }
+            case OpCode.LIST_CONTAINS: {
+              // LIST_CONTAINS list value >> result (returns 1 or 0)
+              const arrowIndex = instruction.args.indexOf(">>");
+              if (arrowIndex === -1 || arrowIndex < 2 || arrowIndex === instruction.args.length - 1) {
+                throw new Error(`Invalid LIST_CONTAINS syntax at line ${instruction.line}. Expected: LIST_CONTAINS list value >> result`);
+              }
+              
+              const list = this.variableCheck(instruction.args[0], instruction.line);
+              const value = this.variableCheck(instruction.args[1], instruction.line);
+              const destVar = instruction.args[arrowIndex + 1];
+              
+              if (list.type !== PanSparkType.List) {
+                throw new Error(`The provided variable is not a list at line ${instruction.line}`);
+              }
+              if (value.type !== PanSparkType.Number) {
+                throw new Error(`The search value must be a number at line ${instruction.line}`);
+              }
+              
+              const found = list.value.includes(value.value) ? 1 : 0;
+              this.setVariableMemory(destVar, Num(found));
+              break;
+            }
+            case OpCode.LIST_REMOVE: {
+              // LIST_REMOVE list index >> result
+              const arrowIndex = instruction.args.indexOf(">>");
+              if (arrowIndex === -1 || arrowIndex < 2 || arrowIndex === instruction.args.length - 1) {
+                throw new Error(`Invalid LIST_REMOVE syntax at line ${instruction.line}. Expected: LIST_REMOVE list index >> result`);
+              }
+              
+              const list = this.variableCheck(instruction.args[0], instruction.line);
+              const index = this.variableCheck(instruction.args[1], instruction.line);
+              const destVar = instruction.args[arrowIndex + 1];
+              
+              if (list.type !== PanSparkType.List) {
+                throw new Error(`The provided variable is not a list at line ${instruction.line}`);
+              }
+              if (index.type !== PanSparkType.Number) {
+                throw new Error(`The index must be a number at line ${instruction.line}`);
+              }
+              
+              if (index.value < 0 || index.value >= list.value.length) {
+                throw new Error(`Index ${index.value} out of bounds at line ${instruction.line}`);
+              }
+              
+              const removed = list.value.splice(index.value, 1)[0];
+              this.setVariableMemory(destVar, Num(removed));
+              break;
+            }
            case OpCode.CONCAT: {
              // CONCAT string1 string2 >> result
              const arrowIndex = instruction.args.indexOf(">>");
@@ -1119,35 +1331,205 @@ export class PanSparkVM {
              this.setVariableMemory(destVar, Num(len));
              break;
            }
-           case OpCode.SUBSTR: {
-             // SUBSTR string start end >> result
-             const arrowIndex = instruction.args.indexOf(">>");
-             if (arrowIndex === -1 || arrowIndex < 3 || arrowIndex === instruction.args.length - 1) {
-               throw new Error(`Invalid SUBSTR syntax at line ${instruction.line}. Expected: SUBSTR string start end >> result`);
-             }
-             
-             const str = this.variableCheck(instruction.args[0], instruction.line);
-             const start = this.variableCheck(instruction.args[1], instruction.line);
-             const end = this.variableCheck(instruction.args[2], instruction.line);
-             const destVar = instruction.args[arrowIndex + 1];
-             
-             if (start.type !== PanSparkType.Number || end.type !== PanSparkType.Number) {
-               throw new Error(`SUBSTR indices must be numbers at line ${instruction.line}`);
-             }
-             
-             let strVal = '';
-             if (str.type === PanSparkType.String) {
-               strVal = str.value;
-             } else if (str.type === PanSparkType.Number) {
-               strVal = str.value.toString();
-             } else {
-               throw new Error(`Cannot substring a list at line ${instruction.line}`);
-             }
-             
-             const result = strVal.substring(start.value, end.value);
-             this.setVariableMemory(destVar, Str(result));
-             break;
-           }
+            case OpCode.SUBSTR: {
+              // SUBSTR string start end >> result
+              const arrowIndex = instruction.args.indexOf(">>");
+              if (arrowIndex === -1 || arrowIndex < 3 || arrowIndex === instruction.args.length - 1) {
+                throw new Error(`Invalid SUBSTR syntax at line ${instruction.line}. Expected: SUBSTR string start end >> result`);
+              }
+              
+              const str = this.variableCheck(instruction.args[0], instruction.line);
+              const start = this.variableCheck(instruction.args[1], instruction.line);
+              const end = this.variableCheck(instruction.args[2], instruction.line);
+              const destVar = instruction.args[arrowIndex + 1];
+              
+              if (start.type !== PanSparkType.Number || end.type !== PanSparkType.Number) {
+                throw new Error(`SUBSTR indices must be numbers at line ${instruction.line}`);
+              }
+              
+              let strVal = '';
+              if (str.type === PanSparkType.String) {
+                strVal = str.value;
+              } else if (str.type === PanSparkType.Number) {
+                strVal = str.value.toString();
+              } else {
+                throw new Error(`Cannot substring a list at line ${instruction.line}`);
+              }
+              
+              const result = strVal.substring(start.value, end.value);
+              this.setVariableMemory(destVar, Str(result));
+              break;
+            }
+            case OpCode.STR_UPPER: {
+              // STR_UPPER string >> result
+              const arrowIndex = instruction.args.indexOf(">>");
+              if (arrowIndex === -1 || arrowIndex === 0 || arrowIndex === instruction.args.length - 1) {
+                throw new Error(`Invalid STR_UPPER syntax at line ${instruction.line}. Expected: STR_UPPER string >> result`);
+              }
+              
+              const str = this.variableCheck(instruction.args[0], instruction.line);
+              const destVar = instruction.args[arrowIndex + 1];
+              
+              let strVal = '';
+              if (str.type === PanSparkType.String) {
+                strVal = str.value;
+              } else if (str.type === PanSparkType.Number) {
+                strVal = str.value.toString();
+              } else {
+                throw new Error(`Cannot uppercase a list at line ${instruction.line}`);
+              }
+              
+              this.setVariableMemory(destVar, Str(strVal.toUpperCase()));
+              break;
+            }
+            case OpCode.STR_LOWER: {
+              // STR_LOWER string >> result
+              const arrowIndex = instruction.args.indexOf(">>");
+              if (arrowIndex === -1 || arrowIndex === 0 || arrowIndex === instruction.args.length - 1) {
+                throw new Error(`Invalid STR_LOWER syntax at line ${instruction.line}. Expected: STR_LOWER string >> result`);
+              }
+              
+              const str = this.variableCheck(instruction.args[0], instruction.line);
+              const destVar = instruction.args[arrowIndex + 1];
+              
+              let strVal = '';
+              if (str.type === PanSparkType.String) {
+                strVal = str.value;
+              } else if (str.type === PanSparkType.Number) {
+                strVal = str.value.toString();
+              } else {
+                throw new Error(`Cannot lowercase a list at line ${instruction.line}`);
+              }
+              
+              this.setVariableMemory(destVar, Str(strVal.toLowerCase()));
+              break;
+            }
+            case OpCode.STR_TRIM: {
+              // STR_TRIM string >> result
+              const arrowIndex = instruction.args.indexOf(">>");
+              if (arrowIndex === -1 || arrowIndex === 0 || arrowIndex === instruction.args.length - 1) {
+                throw new Error(`Invalid STR_TRIM syntax at line ${instruction.line}. Expected: STR_TRIM string >> result`);
+              }
+              
+              const str = this.variableCheck(instruction.args[0], instruction.line);
+              const destVar = instruction.args[arrowIndex + 1];
+              
+              let strVal = '';
+              if (str.type === PanSparkType.String) {
+                strVal = str.value;
+              } else if (str.type === PanSparkType.Number) {
+                strVal = str.value.toString();
+              } else {
+                throw new Error(`Cannot trim a list at line ${instruction.line}`);
+              }
+              
+              this.setVariableMemory(destVar, Str(strVal.trim()));
+              break;
+            }
+            case OpCode.STR_REPLACE: {
+              // STR_REPLACE string find replace >> result
+              const arrowIndex = instruction.args.indexOf(">>");
+              if (arrowIndex === -1 || arrowIndex < 3 || arrowIndex === instruction.args.length - 1) {
+                throw new Error(`Invalid STR_REPLACE syntax at line ${instruction.line}. Expected: STR_REPLACE string find replace >> result`);
+              }
+              
+              const str = this.variableCheck(instruction.args[0], instruction.line);
+              const find = this.variableCheck(instruction.args[1], instruction.line);
+              const replace = this.variableCheck(instruction.args[2], instruction.line);
+              const destVar = instruction.args[arrowIndex + 1];
+              
+              let strVal = '';
+              if (str.type === PanSparkType.String) {
+                strVal = str.value;
+              } else if (str.type === PanSparkType.Number) {
+                strVal = str.value.toString();
+              } else {
+                throw new Error(`Cannot replace in a list at line ${instruction.line}`);
+              }
+              
+              let findVal = '';
+              if (find.type === PanSparkType.String) {
+                findVal = find.value;
+              } else if (find.type === PanSparkType.Number) {
+                findVal = find.value.toString();
+              } else {
+                throw new Error(`Find pattern cannot be a list at line ${instruction.line}`);
+              }
+              
+              let replaceVal = '';
+              if (replace.type === PanSparkType.String) {
+                replaceVal = replace.value;
+              } else if (replace.type === PanSparkType.Number) {
+                replaceVal = replace.value.toString();
+              } else {
+                throw new Error(`Replace value cannot be a list at line ${instruction.line}`);
+              }
+              
+              const result = strVal.replace(new RegExp(findVal, 'g'), replaceVal);
+              this.setVariableMemory(destVar, Str(result));
+              break;
+            }
+            case OpCode.STR_CONTAINS: {
+              // STR_CONTAINS string substring >> result (returns 1 or 0)
+              const arrowIndex = instruction.args.indexOf(">>");
+              if (arrowIndex === -1 || arrowIndex < 2 || arrowIndex === instruction.args.length - 1) {
+                throw new Error(`Invalid STR_CONTAINS syntax at line ${instruction.line}. Expected: STR_CONTAINS string substring >> result`);
+              }
+              
+              const str = this.variableCheck(instruction.args[0], instruction.line);
+              const search = this.variableCheck(instruction.args[1], instruction.line);
+              const destVar = instruction.args[arrowIndex + 1];
+              
+              let strVal = '';
+              if (str.type === PanSparkType.String) {
+                strVal = str.value;
+              } else if (str.type === PanSparkType.Number) {
+                strVal = str.value.toString();
+              } else {
+                throw new Error(`Cannot search in a list at line ${instruction.line}`);
+              }
+              
+              let searchVal = '';
+              if (search.type === PanSparkType.String) {
+                searchVal = search.value;
+              } else if (search.type === PanSparkType.Number) {
+                searchVal = search.value.toString();
+              } else {
+                throw new Error(`Search pattern cannot be a list at line ${instruction.line}`);
+              }
+              
+              const result = strVal.includes(searchVal) ? 1 : 0;
+              this.setVariableMemory(destVar, Num(result));
+              break;
+            }
+            case OpCode.STR_CHAR: {
+              // STR_CHAR string index >> result
+              const arrowIndex = instruction.args.indexOf(">>");
+              if (arrowIndex === -1 || arrowIndex < 2 || arrowIndex === instruction.args.length - 1) {
+                throw new Error(`Invalid STR_CHAR syntax at line ${instruction.line}. Expected: STR_CHAR string index >> result`);
+              }
+              
+              const str = this.variableCheck(instruction.args[0], instruction.line);
+              const index = this.variableCheck(instruction.args[1], instruction.line);
+              const destVar = instruction.args[arrowIndex + 1];
+              
+              if (index.type !== PanSparkType.Number) {
+                throw new Error(`STR_CHAR index must be a number at line ${instruction.line}`);
+              }
+              
+              let strVal = '';
+              if (str.type === PanSparkType.String) {
+                strVal = str.value;
+              } else if (str.type === PanSparkType.Number) {
+                strVal = str.value.toString();
+              } else {
+                throw new Error(`Cannot get character from a list at line ${instruction.line}`);
+              }
+              
+              const char = strVal.charAt(index.value);
+              this.setVariableMemory(destVar, Str(char));
+              break;
+            }
            case OpCode.FREE: {
              if (this.procLock) {
                this.procVariableMemory.delete(instruction.args[0]);
@@ -1258,10 +1640,43 @@ export class PanSparkVM {
             }
             break;
           }
-          case OpCode.ECHO: {
-            this.buffer.push(instruction.args[0].toString());
-            break;
-          }
+           case OpCode.ECHO: {
+             this.buffer.push(instruction.args[0].toString());
+             break;
+           }
+           case OpCode.TYPEOF: {
+             // TYPEOF variable >> result
+             const arrowIndex = instruction.args.indexOf(">>");
+             if (arrowIndex === -1 || arrowIndex === 0 || arrowIndex === instruction.args.length - 1) {
+               throw new Error(`Invalid TYPEOF syntax at line ${instruction.line}. Expected: TYPEOF variable >> result`);
+             }
+             
+             const varName = instruction.args[0];
+             const destVar = instruction.args[arrowIndex + 1];
+             
+             try {
+               const variable = this.variableCheck(varName, instruction.line);
+               let typeString = '';
+               
+               switch (variable.type) {
+                 case PanSparkType.Number:
+                   typeString = 'number';
+                   break;
+                 case PanSparkType.String:
+                   typeString = 'string';
+                   break;
+                 case PanSparkType.List:
+                   typeString = 'list';
+                   break;
+               }
+               
+               this.setVariableMemory(destVar, Str(typeString));
+             } catch (err) {
+               // Variable doesn't exist, return 'undefined'
+               this.setVariableMemory(destVar, Str('undefined'));
+             }
+             break;
+           }
           case OpCode.MATH: {
             const instructionArgs = instruction.args;
             const line = instruction.line;
@@ -1351,49 +1766,131 @@ export class PanSparkVM {
             this.setVariableMemory(destVariable, Num(result));
             break;
           }
-          case OpCode.IF: {
-            const instructionArgs = instruction.args;
-            const argument1 = this.variableCheck(instructionArgs[0], instruction.line);
-            const argument2 = this.variableCheck(instructionArgs[2], instruction.line);
-            
-            let val1: number;
-            let val2: number;
-            
-            if (argument1.type === PanSparkType.Number) {
-              val1 = argument1.value;
-            } else {
-              throw new Error(`Cannot compare non-numeric value at line ${instruction.line}`);
-            }
-            
-            if (argument2.type === PanSparkType.Number) {
-              val2 = argument2.value;
-            } else {
-              throw new Error(`Cannot compare non-numeric value at line ${instruction.line}`);
-            }
-            
-            let check = false;
-            // Optimization: Inline comparison operators
-            switch (instructionArgs[1]) {
-              case '>': check = val1 > val2; break;
-              case '<': check = val1 < val2; break;
-              case '==': check = val1 == val2; break;
-              case '!=': check = val1 != val2; break;
-              case '>=': check = val1 >= val2; break;
-              case '<=': check = val1 <= val2; break;
-              default:
-                throw new Error(`Invalid comparison operator "${instructionArgs[1]}" at line ${instruction.line}`);
-            }
-            
-            if (check) {
-              // Use pre-resolved jump target if available
-              if (instruction.jumpTarget !== undefined) {
-                this.counter = instruction.jumpTarget - 1;
-              } else {
-                this.counter = this.safeJumpPointCheck(instructionArgs[4], instruction.line) - 1;
-              }
-            }
-            break;
-          }
+           case OpCode.IF: {
+             const instructionArgs = instruction.args;
+             let check = false;
+             
+             // Handle single comparison: IF value1 op value2 >> label
+             if (instructionArgs.length >= 5 && 
+                 !['AND', 'OR', 'NOT'].includes(instructionArgs[1])) {
+               const argument1 = this.variableCheck(instructionArgs[0], instruction.line);
+               const argument2 = this.variableCheck(instructionArgs[2], instruction.line);
+               
+               let val1: number;
+               let val2: number;
+               
+               if (argument1.type === PanSparkType.Number) {
+                 val1 = argument1.value;
+               } else {
+                 throw new Error(`Cannot compare non-numeric value at line ${instruction.line}`);
+               }
+               
+               if (argument2.type === PanSparkType.Number) {
+                 val2 = argument2.value;
+               } else {
+                 throw new Error(`Cannot compare non-numeric value at line ${instruction.line}`);
+               }
+               
+               // Optimization: Inline comparison operators
+               switch (instructionArgs[1]) {
+                 case '>': check = val1 > val2; break;
+                 case '<': check = val1 < val2; break;
+                 case '==': check = val1 == val2; break;
+                 case '!=': check = val1 != val2; break;
+                 case '>=': check = val1 >= val2; break;
+                 case '<=': check = val1 <= val2; break;
+                 default:
+                   throw new Error(`Invalid comparison operator "${instructionArgs[1]}" at line ${instruction.line}`);
+               }
+             } else if (instructionArgs[0] === 'NOT') {
+               // Handle NOT operator: IF NOT condition >> label
+               const notArg = instructionArgs[1];
+               try {
+                 const val = this.variableCheck(notArg, instruction.line);
+                 if (val.type === PanSparkType.Number) {
+                   check = val.value === 0;
+                 } else {
+                   throw new Error(`NOT requires a numeric value at line ${instruction.line}`);
+                 }
+               } catch {
+                 check = true; // undefined variables are falsy
+               }
+             } else if (instructionArgs.length >= 7) {
+               // Handle AND/OR operators: IF cond1 AND/OR cond2 >> label OR IF val1 op1 val2 AND/OR val3 op2 val4 >> label
+               let leftCheck = false;
+               let rightCheck = false;
+               const operator = instructionArgs[3];
+               
+               if (operator === 'AND' || operator === 'OR') {
+                 // First condition
+                 const arg1 = this.variableCheck(instructionArgs[0], instruction.line);
+                 const op1 = instructionArgs[1];
+                 const arg2 = this.variableCheck(instructionArgs[2], instruction.line);
+                 
+                 if (arg1.type !== PanSparkType.Number || arg2.type !== PanSparkType.Number) {
+                   throw new Error(`Comparison values must be numbers at line ${instruction.line}`);
+                 }
+                 
+                 let val1 = arg1.value;
+                 let val2 = arg2.value;
+                 
+                 switch (op1) {
+                   case '>': leftCheck = val1 > val2; break;
+                   case '<': leftCheck = val1 < val2; break;
+                   case '==': leftCheck = val1 == val2; break;
+                   case '!=': leftCheck = val1 != val2; break;
+                   case '>=': leftCheck = val1 >= val2; break;
+                   case '<=': leftCheck = val1 <= val2; break;
+                   default:
+                     throw new Error(`Invalid comparison operator "${op1}" at line ${instruction.line}`);
+                 }
+                 
+                 // Second condition
+                 const arg3 = this.variableCheck(instructionArgs[4], instruction.line);
+                 const op2 = instructionArgs[5];
+                 const arg4 = this.variableCheck(instructionArgs[6], instruction.line);
+                 
+                 if (arg3.type !== PanSparkType.Number || arg4.type !== PanSparkType.Number) {
+                   throw new Error(`Comparison values must be numbers at line ${instruction.line}`);
+                 }
+                 
+                 let val3 = arg3.value;
+                 let val4 = arg4.value;
+                 
+                 switch (op2) {
+                   case '>': rightCheck = val3 > val4; break;
+                   case '<': rightCheck = val3 < val4; break;
+                   case '==': rightCheck = val3 == val4; break;
+                   case '!=': rightCheck = val3 != val4; break;
+                   case '>=': rightCheck = val3 >= val4; break;
+                   case '<=': rightCheck = val3 <= val4; break;
+                   default:
+                     throw new Error(`Invalid comparison operator "${op2}" at line ${instruction.line}`);
+                 }
+                 
+                 if (operator === 'AND') {
+                   check = leftCheck && rightCheck;
+                 } else {
+                   check = leftCheck || rightCheck;
+                 }
+               } else {
+                 throw new Error(`Invalid IF syntax at line ${instruction.line}`);
+               }
+             } else {
+               throw new Error(`Invalid IF syntax at line ${instruction.line}`);
+             }
+             
+             if (check) {
+               // Use pre-resolved jump target if available
+               const lastArg = instructionArgs[instructionArgs.length - 1];
+               if (instruction.jumpTarget !== undefined) {
+                 this.counter = instruction.jumpTarget - 1;
+               } else {
+                 this.counter = this.safeJumpPointCheck(lastArg, instruction.line) - 1;
+               }
+             }
+             break;
+           }
           case OpCode.END: {
             break codeloop;
           }
@@ -1622,42 +2119,144 @@ export class PanSparkVM {
             this.counter = procPoint[0] - 1;
             break;
           }
-          case OpCode.WAIT: {
-            const instructionArgs = instruction.args;
-            if (instructionArgs[0]) {
-              const amount = this.variableCheck(instructionArgs[0], instruction.line)
-              if (amount.type === PanSparkType.Number) {
-                this.waitTicks = Math.floor(amount.value);
-              } else {
-                throw new Error(`WAIT requires a numeric value at line ${instruction.line}`);
+           case OpCode.WAIT: {
+             const instructionArgs = instruction.args;
+             if (instructionArgs[0]) {
+               const amount = this.variableCheck(instructionArgs[0], instruction.line)
+               if (amount.type === PanSparkType.Number) {
+                 this.waitTicks = Math.floor(amount.value);
+               } else {
+                 throw new Error(`WAIT requires a numeric value at line ${instruction.line}`);
+               }
+             }
+             break;
+           }
+           case OpCode.TRY: {
+             // TRY errorVar
+             const errorVar = instruction.args[0] || "_error";
+             
+             // Find matching CATCH
+             let catchLine = -1;
+             let depth = 0;
+             for (let i = this.counter + 1; i < instructions.length; i++) {
+               if (instructions[i].operation === OpCode.TRY) depth++;
+               if (instructions[i].operation === OpCode.CATCH && depth === 0) {
+                 catchLine = i;
+                 break;
+               }
+               if (instructions[i].operation === OpCode.ENDTRY && depth === 0) break;
+               if (instructions[i].operation === OpCode.ENDTRY) depth--;
+             }
+             
+             if (catchLine === -1) {
+               throw new Error(`TRY without CATCH at line ${instruction.line}`);
+             }
+             
+             // Find matching ENDTRY
+             let endTryLine = -1;
+             depth = 0;
+             for (let i = this.counter + 1; i < instructions.length; i++) {
+               if (instructions[i].operation === OpCode.TRY) depth++;
+               if (instructions[i].operation === OpCode.ENDTRY && depth === 0) {
+                 endTryLine = i;
+                 break;
+               }
+               if (instructions[i].operation === OpCode.ENDTRY) depth--;
+             }
+             
+             if (endTryLine === -1) {
+               throw new Error(`TRY without ENDTRY at line ${instruction.line}`);
+             }
+             
+              this.tryStack.push({
+                startLine: this.counter,
+                catchLine: catchLine,
+                endLine: endTryLine,
+                errorVariable: errorVar,
+                errorOccurred: false
+              });
+             break;
+           }
+            case OpCode.CATCH: {
+              // Check if we reached CATCH due to an error
+              if (this.tryStack.length > 0 && !this.tryStack[this.tryStack.length - 1].errorOccurred) {
+                // No error occurred, skip CATCH block and go to ENDTRY
+                const tryBlock = this.tryStack[this.tryStack.length - 1];
+                this.counter = tryBlock.endLine;
               }
+              // If error occurred, just continue normally to execute CATCH block
+              break;
             }
-            break;
+           case OpCode.ENDTRY: {
+             // End of TRY block, pop from stack
+             if (this.tryStack.length > 0) {
+               this.tryStack.pop();
+             }
+             break;
+           }
+            case OpCode.THROW: {
+              // THROW message
+              const errorMsg = instruction.args[0] || "An error occurred";
+              this.lastError = errorMsg;
+              
+              if (this.tryStack.length > 0) {
+                const tryBlock = this.tryStack[this.tryStack.length - 1];
+                // Set error variable and jump to CATCH
+                this.setVariableMemory(tryBlock.errorVariable, Str(errorMsg));
+                // Mark that an error occurred
+                tryBlock.errorOccurred = true;
+                this.counter = tryBlock.catchLine - 1;
+              } else {
+                throw new Error(`THROW: ${errorMsg}`);
+              }
+              break;
+            }
+           default:
+             throw new Error(`Unknown operation ${instruction.operation} at line ${instruction.line}`);
+         }
+          } catch (err) {
+            // If an error occurs during execution and we're in a TRY block, catch it
+            if (this.tryStack.length > 0) {
+              const tryBlock = this.tryStack[this.tryStack.length - 1];
+              const errorMessage = err instanceof Error ? err.message : String(err);
+              
+              // Store the error message (with humor!)
+              const humorous_error = `☠️ OH NOES! ${errorMessage} 💥`;
+              this.setVariableMemory(tryBlock.errorVariable, Str(humorous_error));
+              
+              // Mark that an error occurred
+              tryBlock.errorOccurred = true;
+              
+              // Jump to CATCH block
+              this.counter = tryBlock.catchLine - 1;
+            } else {
+              // No TRY block, re-throw the error
+              throw err;
+            }
           }
-          default:
-            throw new Error(`Unknown operation ${instruction.operation} at line ${instruction.line}`);
-        }
-      }
-      this.counter++;
-    }
-    return 0;
-  }
+       }
+       this.counter++;
+     }
+     return 0;
+   }
 
-  public resetVM(): void {
-    this.variableMemory.clear();
-    this.jumpPoints.clear();
-    this.procPoints.clear();
-    this.buffer = [];
-    this.forStack = [];
-    this.procStack = [];
-    this.forStack = [];
-    this.framePool.clear();
-    this.procReturn = Num(0);
-    this.shouldReturn = false;
-    this.waitTicks = 0;
-    this.counter = 0;
-    this.importedModules.clear();
-  }
+   public resetVM(): void {
+     this.variableMemory.clear();
+     this.jumpPoints.clear();
+     this.procPoints.clear();
+     this.buffer = [];
+     this.forStack = [];
+     this.procStack = [];
+     this.forStack = [];
+     this.framePool.clear();
+     this.procReturn = Num(0);
+     this.shouldReturn = false;
+     this.waitTicks = 0;
+     this.counter = 0;
+     this.importedModules.clear();
+     this.tryStack = [];
+     this.lastError = "";
+   }
 
   public getBuffer(): string[] {
     return this.buffer;
@@ -1688,50 +2287,52 @@ export class PanSparkVM {
     * @returns Serialized state string (respects 32767 character limit per chunk)
     * @throws Error if state exceeds maximum chunk size
     */
-   public saveState(instructions?: CompiledInstruction[]): string {
-     const state = {
-       uuid: this.uuid,
-       counter: this.counter,
-       waitTicks: this.waitTicks,
-       variableMemory: this.serializeVariableMap(this.variableMemory),
-       jumpPoints: Array.from(this.jumpPoints.entries()),
-       procPoints: Array.from(this.procPoints.entries()),
-       procStack: this.procStack.map(frame => ({
-         variableMemory: this.serializeVariableMap(frame.variableMemory),
-         returnLocation: frame.returnLocation,
-         returnValueTarget: frame.returnValueTarget,
-         procStartLine: frame.procStartLine,
-         procEndLine: frame.procEndLine,
-         procName: frame.procName,
-         args: frame.args.map(arg => this.serializeVariable(arg)),
-       })),
-       forStack: this.forStack,
-       procReturn: this.serializeVariable(this.procReturn),
-       shouldReturn: this.shouldReturn,
-       buffer: this.buffer,
-       maxVariableCount: this.maxVariableCount,
-       debugMode: this.debugMode,
-       instructions: instructions ? instructions.map(inst => ({
-         operation: inst.operation,
-         args: inst.args,
-         line: inst.line,
-         jumpTarget: inst.jumpTarget,
-         endForIndex: inst.endForIndex,
-       })) : null,
-     };
-     
-     const serialized = JSON.stringify(state);
-     const MAX_SIZE = 32767;
-     
-     if (serialized.length > MAX_SIZE) {
-       throw new Error(
-         `State size (${serialized.length} characters) exceeds maximum limit of ${MAX_SIZE} characters. ` +
-         `Clear the output buffer, reduce variables, or use multiple checkpoints.`
-       );
-     }
-     
-     return serialized;
-   }
+    public saveState(instructions?: CompiledInstruction[]): string {
+      const state = {
+        uuid: this.uuid,
+        counter: this.counter,
+        waitTicks: this.waitTicks,
+        variableMemory: this.serializeVariableMap(this.variableMemory),
+        jumpPoints: Array.from(this.jumpPoints.entries()),
+        procPoints: Array.from(this.procPoints.entries()),
+        procStack: this.procStack.map(frame => ({
+          variableMemory: this.serializeVariableMap(frame.variableMemory),
+          returnLocation: frame.returnLocation,
+          returnValueTarget: frame.returnValueTarget,
+          procStartLine: frame.procStartLine,
+          procEndLine: frame.procEndLine,
+          procName: frame.procName,
+          args: frame.args.map(arg => this.serializeVariable(arg)),
+        })),
+        forStack: this.forStack,
+        tryStack: this.tryStack,
+        lastError: this.lastError,
+        procReturn: this.serializeVariable(this.procReturn),
+        shouldReturn: this.shouldReturn,
+        buffer: this.buffer,
+        maxVariableCount: this.maxVariableCount,
+        debugMode: this.debugMode,
+        instructions: instructions ? instructions.map(inst => ({
+          operation: inst.operation,
+          args: inst.args,
+          line: inst.line,
+          jumpTarget: inst.jumpTarget,
+          endForIndex: inst.endForIndex,
+        })) : null,
+      };
+      
+      const serialized = JSON.stringify(state);
+      const MAX_SIZE = 32767;
+      
+      if (serialized.length > MAX_SIZE) {
+        throw new Error(
+          `State size (${serialized.length} characters) exceeds maximum limit of ${MAX_SIZE} characters. ` +
+          `Clear the output buffer, reduce variables, or use multiple checkpoints.`
+        );
+      }
+      
+      return serialized;
+    }
 
    /**
     * Loads a previously saved VM state from a serialized string
@@ -1741,49 +2342,51 @@ export class PanSparkVM {
     * @returns The compiled instructions if they were included in the state, null otherwise
     * @throws Error if deserialization fails or state is corrupted
     */
-   public loadState(serializedState: string): CompiledInstruction[] | null {
-     try {
-       if (serializedState.length > 32767) {
-         throw new Error(
-           `Serialized state (${serializedState.length} characters) exceeds maximum limit of 32767 characters`
-         );
-       }
-       
-       const state = JSON.parse(serializedState);
-       
-       this.uuid = state.uuid;
-       this.counter = state.counter;
-       this.waitTicks = state.waitTicks;
-       this.variableMemory = this.deserializeVariableMap(state.variableMemory);
-       this.jumpPoints = new Map(state.jumpPoints);
-       this.procPoints = new Map(state.procPoints);
-       this.procStack = state.procStack.map((frameData: any) => ({
-         variableMemory: this.deserializeVariableMap(frameData.variableMemory),
-         returnLocation: frameData.returnLocation,
-         returnValueTarget: frameData.returnValueTarget,
-         procStartLine: frameData.procStartLine,
-         procEndLine: frameData.procEndLine,
-         procName: frameData.procName,
-         args: frameData.args.map((arg: any) => this.deserializeVariable(arg)),
-       }));
-       this.forStack = state.forStack;
-       this.procReturn = this.deserializeVariable(state.procReturn);
-       this.shouldReturn = state.shouldReturn;
-       this.buffer = state.buffer;
-       this.maxVariableCount = state.maxVariableCount;
-       this.debugMode = state.debugMode;
-       
-       // Return instructions if they were saved
-       if (state.instructions) {
-         return state.instructions as CompiledInstruction[];
-       }
-       
-       return null;
-     } catch (err) {
-       const errorMsg = err instanceof Error ? err.message : String(err);
-       throw new Error(`Failed to load VM state: ${errorMsg}`);
-     }
-   }
+    public loadState(serializedState: string): CompiledInstruction[] | null {
+      try {
+        if (serializedState.length > 32767) {
+          throw new Error(
+            `Serialized state (${serializedState.length} characters) exceeds maximum limit of 32767 characters`
+          );
+        }
+        
+        const state = JSON.parse(serializedState);
+        
+        this.uuid = state.uuid;
+        this.counter = state.counter;
+        this.waitTicks = state.waitTicks;
+        this.variableMemory = this.deserializeVariableMap(state.variableMemory);
+        this.jumpPoints = new Map(state.jumpPoints);
+        this.procPoints = new Map(state.procPoints);
+        this.procStack = state.procStack.map((frameData: any) => ({
+          variableMemory: this.deserializeVariableMap(frameData.variableMemory),
+          returnLocation: frameData.returnLocation,
+          returnValueTarget: frameData.returnValueTarget,
+          procStartLine: frameData.procStartLine,
+          procEndLine: frameData.procEndLine,
+          procName: frameData.procName,
+          args: frameData.args.map((arg: any) => this.deserializeVariable(arg)),
+        }));
+        this.forStack = state.forStack;
+        this.tryStack = state.tryStack || [];
+        this.lastError = state.lastError || "";
+        this.procReturn = this.deserializeVariable(state.procReturn);
+        this.shouldReturn = state.shouldReturn;
+        this.buffer = state.buffer;
+        this.maxVariableCount = state.maxVariableCount;
+        this.debugMode = state.debugMode;
+        
+        // Return instructions if they were saved
+        if (state.instructions) {
+          return state.instructions as CompiledInstruction[];
+        }
+        
+        return null;
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        throw new Error(`Failed to load VM state: ${errorMsg}`);
+      }
+    }
 
    /**
     * Serializes a Variable object to a JSON-compatible format

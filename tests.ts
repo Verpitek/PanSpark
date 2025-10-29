@@ -1455,11 +1455,340 @@ runTest("Inline comments - Comment with special characters", () => {
 });
 
 runTest("Inline comments - Multiple slashes in comment", () => {
-  const code = `
-    SET 100 >> x  // This is a comment with // multiple // slashes
-    PRINT x
-  `;
-  expectOutput(code, ["100"]);
+   const code = `
+     SET 100 >> x  // This is a comment with // multiple // slashes
+     PRINT x
+   `;
+   expectOutput(code, ["100"]);
+});
+
+// ==================== TYPEOF OPERATOR ====================
+console.log("\n=== TYPEOF OPERATOR ===\n");
+
+runTest("TYPEOF - Check number type", () => {
+   const code = `
+     SET 42 >> x
+     TYPEOF x >> type
+     PRINT type
+   `;
+   expectOutput(code, ["number"]);
+});
+
+runTest("TYPEOF - Check string type", () => {
+   const code = `
+     SET hello >> x
+     TYPEOF x >> type
+     PRINT type
+   `;
+   expectOutput(code, ["string"]);
+});
+
+runTest("TYPEOF - Check list type", () => {
+   const code = `
+     LIST_CREATE mylist
+     TYPEOF mylist >> type
+     PRINT type
+   `;
+   expectOutput(code, ["list"]);
+});
+
+runTest("TYPEOF - Check undefined variable", () => {
+   const code = `
+     TYPEOF undefined_var >> type
+     PRINT type
+   `;
+   expectOutput(code, ["undefined"]);
+});
+
+// ==================== STRING FUNCTIONS ====================
+console.log("\n=== STRING FUNCTIONS ===\n");
+
+runTest("STR_UPPER - Convert to uppercase", () => {
+   const code = `
+     SET hello >> str
+     STR_UPPER str >> upper
+     PRINT upper
+   `;
+   expectOutput(code, ["HELLO"]);
+});
+
+runTest("STR_LOWER - Convert to lowercase", () => {
+   const code = `
+     SET WORLD >> str
+     STR_LOWER str >> lower
+     PRINT lower
+   `;
+   expectOutput(code, ["world"]);
+});
+
+runTest("STR_TRIM - Remove whitespace", () => {
+   const code = `
+     SET "  hello  " >> str
+     STR_TRIM str >> trimmed
+     PRINT trimmed
+   `;
+   expectOutput(code, ["hello"]);
+});
+
+runTest("STR_REPLACE - Replace text", () => {
+   const code = `
+     SET "hello world" >> str
+     STR_REPLACE str world universe >> replaced
+     PRINT replaced
+   `;
+   expectOutput(code, ["hello universe"]);
+});
+
+runTest("STR_CONTAINS - Check if contains substring (true)", () => {
+   const code = `
+     SET "hello world" >> str
+     STR_CONTAINS str "world" >> found
+     PRINT found
+   `;
+   expectOutput(code, ["1"]);
+});
+
+runTest("STR_CONTAINS - Check if contains substring (false)", () => {
+   const code = `
+     SET "hello world" >> str
+     STR_CONTAINS str "xyz" >> found
+     PRINT found
+   `;
+   expectOutput(code, ["0"]);
+});
+
+runTest("STR_CHAR - Get character at index", () => {
+   const code = `
+     SET "hello" >> str
+     STR_CHAR str 1 >> char
+     PRINT char
+   `;
+   expectOutput(code, ["e"]);
+});
+
+// ==================== LOGICAL OPERATORS (AND, OR, NOT) ====================
+console.log("\n=== LOGICAL OPERATORS ===\n");
+
+runTest("IF with AND - Both true", () => {
+   const code = `
+     SET 10 >> x
+     SET 20 >> y
+     IF x < 15 AND y > 10 >> success
+     ECHO "Failed"
+     JUMP end
+     POINT success
+     ECHO "Success"
+     POINT end
+   `;
+   expectOutput(code, ["Success"]);
+});
+
+runTest("IF with AND - First false", () => {
+   const code = `
+     SET 10 >> x
+     SET 20 >> y
+     IF x > 15 AND y > 10 >> success
+     ECHO "Failed"
+     JUMP end
+     POINT success
+     ECHO "Success"
+     POINT end
+   `;
+   expectOutput(code, ["Failed"]);
+});
+
+runTest("IF with OR - First true", () => {
+   const code = `
+     SET 10 >> x
+     SET 5 >> y
+     IF x > 5 OR y > 10 >> success
+     ECHO "Failed"
+     JUMP end
+     POINT success
+     ECHO "Success"
+     POINT end
+   `;
+   expectOutput(code, ["Success"]);
+});
+
+runTest("IF with OR - Both false", () => {
+   const code = `
+     SET 2 >> x
+     SET 3 >> y
+     IF x > 10 OR y > 10 >> success
+     ECHO "Failed"
+     JUMP end
+     POINT success
+     ECHO "Success"
+     POINT end
+   `;
+   expectOutput(code, ["Failed"]);
+});
+
+runTest("IF with NOT", () => {
+   const code = `
+     SET 0 >> x
+     IF NOT x >> success
+     ECHO "Failed"
+     JUMP end
+     POINT success
+     ECHO "Success"
+     POINT end
+   `;
+   expectOutput(code, ["Success"]);
+});
+
+// ==================== LIST FUNCTIONS ====================
+console.log("\n=== LIST FUNCTIONS ===\n");
+
+runTest("LIST_LENGTH - Get list length", () => {
+   const code = `
+     LIST_CREATE mylist
+     LIST_PUSH 10 >> mylist
+     LIST_PUSH 20 >> mylist
+     LIST_PUSH 30 >> mylist
+     LIST_LENGTH mylist >> len
+     PRINT len
+   `;
+   expectOutput(code, ["3"]);
+});
+
+runTest("LIST_REVERSE - Reverse a list", () => {
+   const code = `
+     LIST_CREATE mylist
+     LIST_PUSH 1 >> mylist
+     LIST_PUSH 2 >> mylist
+     LIST_PUSH 3 >> mylist
+     LIST_REVERSE mylist >> reversed
+     LIST_GET reversed 0 >> first
+     PRINT first
+   `;
+   expectOutput(code, ["3"]);
+});
+
+runTest("LIST_FIND - Find element in list", () => {
+   const code = `
+     LIST_CREATE mylist
+     LIST_PUSH 10 >> mylist
+     LIST_PUSH 20 >> mylist
+     LIST_PUSH 30 >> mylist
+     LIST_FIND mylist 20 >> index
+     PRINT index
+   `;
+   expectOutput(code, ["1"]);
+});
+
+runTest("LIST_FIND - Element not found", () => {
+   const code = `
+     LIST_CREATE mylist
+     LIST_PUSH 10 >> mylist
+     LIST_PUSH 20 >> mylist
+     LIST_FIND mylist 99 >> index
+     PRINT index
+   `;
+   expectOutput(code, ["-1"]);
+});
+
+runTest("LIST_CONTAINS - Check if list contains value (true)", () => {
+   const code = `
+     LIST_CREATE mylist
+     LIST_PUSH 10 >> mylist
+     LIST_PUSH 20 >> mylist
+     LIST_PUSH 30 >> mylist
+     LIST_CONTAINS mylist 20 >> found
+     PRINT found
+   `;
+   expectOutput(code, ["1"]);
+});
+
+runTest("LIST_CONTAINS - Check if list contains value (false)", () => {
+   const code = `
+     LIST_CREATE mylist
+     LIST_PUSH 10 >> mylist
+     LIST_PUSH 20 >> mylist
+     LIST_CONTAINS mylist 99 >> found
+     PRINT found
+   `;
+   expectOutput(code, ["0"]);
+});
+
+runTest("LIST_REMOVE - Remove element from list", () => {
+   const code = `
+     LIST_CREATE mylist
+     LIST_PUSH 10 >> mylist
+     LIST_PUSH 20 >> mylist
+     LIST_PUSH 30 >> mylist
+     LIST_REMOVE mylist 1 >> removed
+     PRINT removed
+     LIST_LENGTH mylist >> len
+     PRINT len
+   `;
+   expectOutput(code, ["20", "2"]);
+});
+
+// ==================== TRY-CATCH ERROR HANDLING ====================
+console.log("\n=== TRY-CATCH ERROR HANDLING ===\n");
+
+runTest("TRY-CATCH - Catch division by zero", () => {
+   const code = `
+     TRY err
+       MATH 10 / 0 >> result
+       ECHO "Should not reach here"
+     CATCH
+       PRINT err
+     ENDTRY
+   `;
+   expectOutputContains(code, "OH NOES");
+});
+
+runTest("TRY-CATCH - No error, skip catch", () => {
+   const code = `
+     TRY err
+       MATH 10 + 5 >> result
+       ECHO "Success"
+     CATCH
+       ECHO "Should not reach here"
+     ENDTRY
+   `;
+   expectOutput(code, ["Success"]);
+});
+
+runTest("TRY-CATCH - Throw custom error", () => {
+   const code = `
+     TRY err
+       THROW "Custom error message"
+     CATCH
+       PRINT err
+     ENDTRY
+   `;
+   expectOutput(code, ["Custom error message"]);
+});
+
+runTest("TRY-CATCH - Undefined variable in try block", () => {
+   const code = `
+     TRY err
+       PRINT undefined_variable
+     CATCH
+       ECHO "Caught error"
+     ENDTRY
+   `;
+   expectOutput(code, ["Caught error"]);
+});
+
+runTest("TRY-CATCH - Nested try blocks", () => {
+   const code = `
+     TRY outer_err
+       TRY inner_err
+         THROW "Inner error"
+       CATCH
+         ECHO "Inner catch"
+       ENDTRY
+       ECHO "After inner try"
+     CATCH
+       ECHO "Outer catch"
+     ENDTRY
+   `;
+   expectOutput(code, ["Inner catch", "After inner try"]);
 });
 
 // ==================== RESULTS SUMMARY ====================

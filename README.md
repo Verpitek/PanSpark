@@ -109,12 +109,118 @@ PRINT result  // outputs: 120
 | `MATH` | Math operations | `MATH x + y >> result` |
 | `PRINT` | Output number/variable | `PRINT result` |
 | `ECHO` | Output string | `ECHO "Hello"` |
-| `IF` | Conditional jump | `IF x > 10 >> label` |
+| `IF` | Conditional jump with logic | `IF x > 10 >> label` or `IF x > 5 AND y < 20 >> label` |
 | `JUMP` | Unconditional jump | `JUMP start` |
 | `POINT` | Define jump target | `POINT start` |
 | `PROC` | Define procedure | `PROC add (a, b) { ... }` |
 | `CALL` | Call procedure | `CALL add (1, 2) >> sum` |
-| `LIST_*` | List operations | `LIST_PUSH 10 >> mylist` |
+| `FOR`/`ENDFOR` | Loop construct | `FOR i 1 10 >> body` |
+| `TRY`/`CATCH`/`ENDTRY` | Error handling | `TRY err CATCH ENDTRY` |
+| `TYPEOF` | Get variable type | `TYPEOF x >> type` |
+
+## List Operations
+
+| OpCode | Description | Example |
+|--------|-------------|---------|
+| `LIST_CREATE` | Create empty list | `LIST_CREATE mylist` |
+| `LIST_PUSH` | Add element to list | `LIST_PUSH 10 >> mylist` |
+| `LIST_GET` | Get element from list | `LIST_GET mylist 0 >> value` |
+| `LIST_SET` | Modify element | `LIST_SET 20 0 >> mylist` |
+| `LIST_SORT` | Sort list | `LIST_SORT mylist min` |
+| `LIST_LENGTH` | Get list length | `LIST_LENGTH mylist >> len` |
+| `LIST_REVERSE` | Reverse list | `LIST_REVERSE mylist >> reversed` |
+| `LIST_FIND` | Find element index | `LIST_FIND mylist 20 >> index` |
+| `LIST_CONTAINS` | Check if contains | `LIST_CONTAINS mylist 30 >> found` |
+| `LIST_REMOVE` | Remove element | `LIST_REMOVE mylist 1 >> removed` |
+
+## String Operations
+
+| OpCode | Description | Example |
+|--------|-------------|---------|
+| `CONCAT` | Concatenate strings | `CONCAT str1 str2 >> result` |
+| `STRLEN` | Get string length | `STRLEN str >> len` |
+| `SUBSTR` | Extract substring | `SUBSTR str 0 5 >> result` |
+| `STR_UPPER` | Convert to uppercase | `STR_UPPER str >> upper` |
+| `STR_LOWER` | Convert to lowercase | `STR_LOWER str >> lower` |
+| `STR_TRIM` | Remove whitespace | `STR_TRIM str >> trimmed` |
+| `STR_REPLACE` | Replace text | `STR_REPLACE str find replace >> result` |
+| `STR_CONTAINS` | Check substring | `STR_CONTAINS str substr >> found` |
+| `STR_CHAR` | Get character at index | `STR_CHAR str 0 >> char` |
+
+## Advanced Features
+
+### Logical Operators in Conditionals
+
+Use `AND`, `OR`, and `NOT` for complex conditions:
+
+```panspark
+SET 10 >> x
+SET 20 >> y
+
+// AND operator
+IF x < 15 AND y > 10 >> both_true
+ECHO "One condition failed"
+JUMP end
+
+POINT both_true
+ECHO "Both conditions are true"
+
+// OR operator
+IF x > 20 OR y < 15 >> either_true
+JUMP end
+
+POINT either_true
+ECHO "At least one condition is true"
+
+// NOT operator
+IF NOT x >> x_is_zero
+ECHO "X is not zero"
+
+POINT x_is_zero
+ECHO "X is zero"
+
+POINT end
+```
+
+### Type Checking with TYPEOF
+
+```panspark
+SET 42 >> num
+SET "hello" >> str
+LIST_CREATE mylist
+
+TYPEOF num >> type1
+TYPEOF str >> type2
+TYPEOF mylist >> type3
+TYPEOF undefined_var >> type4
+
+PRINT type1  // outputs: number
+PRINT type2  // outputs: string
+PRINT type3  // outputs: list
+PRINT type4  // outputs: undefined
+```
+
+### Error Handling with TRY-CATCH
+
+PanSpark includes a humorous error handling system! When an error is caught, it's prefixed with "☠️ OH NOES! 💥":
+
+```panspark
+TRY error
+  // Code that might fail
+  MATH 10 / 0 >> result  // This will throw!
+  ECHO "This won't execute"
+CATCH
+  // Handle the error
+  PRINT error  // outputs: ☠️ OH NOES! Division by zero error: cannot divide 10 by 0 💥
+ENDTRY
+
+// You can also manually throw errors
+TRY err
+  THROW "Something went wrong!"
+CATCH
+  PRINT err  // outputs: Something went wrong!
+ENDTRY
+```
 
 ## Creating Custom OpCodes
 
