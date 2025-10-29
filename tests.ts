@@ -1812,6 +1812,6 @@ if (failed > 0) {
   });
   process.exit(1);
 } else {
-  console.log("\n🎉 All tests passed!");
+  console.log("\nAll tests passed!");
   process.exit(0);
 }
