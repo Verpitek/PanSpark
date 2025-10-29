@@ -2249,9 +2249,9 @@ export class PanSparkVM {
               const tryBlock = this.tryStack[this.tryStack.length - 1];
               const errorMessage = err instanceof Error ? err.message : String(err);
               
-              // Store the error message (with humor!)
-              const humorous_error = `☠️ OH NOES! ${errorMessage} 💥`;
-              this.setVariableMemory(tryBlock.errorVariable, Str(humorous_error));
+              // Store the error message to buffer
+              this.buffer.push(errorMessage);
+              this.setVariableMemory(tryBlock.errorVariable, Str(errorMessage));
               
               // Mark that an error occurred
               tryBlock.errorOccurred = true;

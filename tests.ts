@@ -1738,7 +1738,7 @@ runTest("TRY-CATCH - Catch division by zero", () => {
        PRINT err
      ENDTRY
    `;
-   expectOutputContains(code, "OH NOES");
+   expectOutputContains(code, "Division by zero");
 });
 
 runTest("TRY-CATCH - No error, skip catch", () => {
@@ -1772,7 +1772,7 @@ runTest("TRY-CATCH - Undefined variable in try block", () => {
        ECHO "Caught error"
      ENDTRY
    `;
-   expectOutput(code, ["Caught error"]);
+   expectOutputContains(code, "Caught error");
 });
 
 runTest("TRY-CATCH - Nested try blocks", () => {
