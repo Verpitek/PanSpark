@@ -2463,17 +2463,16 @@ export class PanSparkVM {
      ]);
    }
 
-   /**
-    * Deserializes a Map of variables from an array of [key, serialized_variable] pairs
-    */
-   private deserializeVariableMap(data: Array<[string, any]>): Map<string, Variable> {
-     const varMap = new Map<string, Variable>();
-     for (const [key, value] of data) {
-       varMap.set(key, this.deserializeVariable(value));
-     }
-     return varMap;
-   }
-}
+    /**
+     * Deserializes a Map of variables from an array of [key, serialized_variable] pairs
+     */
+    private deserializeVariableMap(data: Array<[string, any]>): Map<string, Variable> {
+      const varMap = new Map<string, Variable>();
+      for (const [key, value] of data) {
+        varMap.set(key, this.deserializeVariable(value));
+      }
+      return varMap;
+    }
 
    /**
     * Transpile PanSpark code to Arduino C++
@@ -2721,6 +2720,7 @@ export class PanSparkVM {
      
      return arduinoCode.join('\n');
    }
+}
 
 export function createVM(): PanSparkVM {
    return new PanSparkVM();
