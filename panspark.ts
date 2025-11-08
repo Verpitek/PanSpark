@@ -2628,21 +2628,16 @@ export class PanSparkVM {
      
      // Global variable declarations for PanSpark variables
      arduinoCode.push('// PanSpark Variable Storage');
-     arduinoCode.push('struct Variable {');
-     arduinoCode.push('  enum Type { NUMBER, STRING, LIST } type;');
-     arduinoCode.push('  union {');
-     arduinoCode.push('    float numValue;');
-     arduinoCode.push('    char strValue[256];');
-     arduinoCode.push('    float listValue[100];');
-     arduinoCode.push('  } data;');
-     arduinoCode.push('  int listLength;');
-     arduinoCode.push('};');
-     arduinoCode.push('');
-     
-     // Global variable map
-     arduinoCode.push('// Global variable map (max 50 variables)');
-     arduinoCode.push('struct Variable variables[50];');
-     arduinoCode.push('char varNames[50][32];');
+      arduinoCode.push('struct Variable {');
+      arduinoCode.push('  enum Type { NUMBER, STRING, LIST } type;');
+      arduinoCode.push('  float numValue;  // Only support numbers for now');
+      arduinoCode.push('};');
+      arduinoCode.push('');
+      
+      // Global variable map - reduced to 20 variables max
+      arduinoCode.push('// Global variable map (max 20 variables)');
+      arduinoCode.push('struct Variable variables[20];');
+      arduinoCode.push('char varNames[20][16];');
      arduinoCode.push('int varCount = 0;');
      arduinoCode.push('');
      
@@ -2663,18 +2658,17 @@ export class PanSparkVM {
      arduinoCode.push('    idx = varCount++;');
      arduinoCode.push('    strcpy(varNames[idx], name);');
      arduinoCode.push('  }');
-      arduinoCode.push('  variables[idx].type = Variable::NUMBER;');
-      arduinoCode.push('  variables[idx].data.numValue = value;');
-      arduinoCode.push('  return idx;');
-      arduinoCode.push('}');
-      arduinoCode.push('');
-      
-      arduinoCode.push('// Helper function to get variable value');
-      arduinoCode.push('float getVariable(const char* name) {');
-      arduinoCode.push('  int idx = findVariable(name);');
-      arduinoCode.push('  if (idx >= 0) return variables[idx].data.numValue;');
-      arduinoCode.push('  return 0.0;  // Default to 0 if not found');
-      arduinoCode.push('}');
+       arduinoCode.push('  variables[idx].numValue = value;');
+       arduinoCode.push('  return idx;');
+       arduinoCode.push('}');
+       arduinoCode.push('');
+       
+       arduinoCode.push('// Helper function to get variable value');
+       arduinoCode.push('float getVariable(const char* name) {');
+       arduinoCode.push('  int idx = findVariable(name);');
+       arduinoCode.push('  if (idx >= 0) return variables[idx].numValue;');
+       arduinoCode.push('  return 0.0;  // Default to 0 if not found');
+       arduinoCode.push('}');
       arduinoCode.push('');
       
       // Parse and transpile each line
