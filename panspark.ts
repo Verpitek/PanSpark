@@ -87,11 +87,18 @@ enum OpCode {
    STR_CONTAINS,
    STR_CHAR,
    
-   TYPEOF,
-   TRY,
-   CATCH,
-   ENDTRY,
-   THROW
+    TYPEOF,
+    TRY,
+    CATCH,
+    ENDTRY,
+    THROW,
+    
+    // Arduino/Hardware IO Operations
+    PIN_MODE,
+    DIGITAL_WRITE,
+    DIGITAL_READ,
+    ANALOG_WRITE,
+    ANALOG_READ
 }
 
 // Pre-compiled instruction with resolved indices
@@ -2233,25 +2240,152 @@ export class PanSparkVM {
              }
              break;
            }
-            case OpCode.THROW: {
-              // THROW message
-              const errorMsg = instruction.args[0] || "An error occurred";
-              this.lastError = errorMsg;
-              
-              if (this.tryStack.length > 0) {
-                const tryBlock = this.tryStack[this.tryStack.length - 1];
-                // Set error variable and jump to CATCH
-                this.setVariableMemory(tryBlock.errorVariable, Str(errorMsg));
-                // Mark that an error occurred
-                tryBlock.errorOccurred = true;
-                this.counter = tryBlock.catchLine - 1;
-              } else {
-                throw new Error(`THROW: ${errorMsg}`);
-              }
-              break;
-            }
-           default:
-             throw new Error(`Unknown operation ${instruction.operation} at line ${instruction.line}`);
+             case OpCode.THROW: {
+               // THROW message
+               const errorMsg = instruction.args[0] || "An error occurred";
+               this.lastError = errorMsg;
+               
+               if (this.tryStack.length > 0) {
+                 const tryBlock = this.tryStack[this.tryStack.length - 1];
+                 // Set error variable and jump to CATCH
+                 this.setVariableMemory(tryBlock.errorVariable, Str(errorMsg));
+                 // Mark that an error occurred
+                 tryBlock.errorOccurred = true;
+                 this.counter = tryBlock.catchLine - 1;
+               } else {
+                 throw new Error(`THROW: ${errorMsg}`);
+               }
+               break;
+             }
+             
+             // ===== HARDWARE IO OPERATIONS =====
+             case OpCode.PIN_MODE: {
+               // PIN_MODE pin mode
+               // pin: pin number (0-13 typically), mode: INPUT (0) or OUTPUT (1)
+               const pinStr = instruction.args[0];
+               const modeStr = instruction.args[1];
+               const pin = parseInt(pinStr);
+               
+               let mode = 0;
+               if (modeStr.toUpperCase() === 'OUTPUT') {
+                 mode = 1;
+               } else if (modeStr.toUpperCase() === 'INPUT') {
+                 mode = 0;
+               } else {
+                 const modeVar = this.variableCheck(modeStr, instruction.line);
+                 if (modeVar.type !== PanSparkType.Number) {
+                   throw new Error(`PIN_MODE mode must be a number at line ${instruction.line}`);
+                 }
+                 mode = modeVar.value;
+               }
+               
+               // Store pin mode in a special variable for transpiler/debugging
+               this.setVariableMemory(`__pin_${pin}_mode`, Num(mode));
+               this.buffer.push(`PIN_MODE: pin ${pin} set to ${mode === 1 ? 'OUTPUT' : 'INPUT'}`);
+               break;
+             }
+             
+             case OpCode.DIGITAL_WRITE: {
+               // DIGITAL_WRITE pin value
+               // pin: pin number, value: HIGH (1) or LOW (0)
+               const pinStr = instruction.args[0];
+               const valueStr = instruction.args[1];
+               const pin = parseInt(pinStr);
+               
+               let value = 0;
+               if (valueStr.toUpperCase() === 'HIGH') {
+                 value = 1;
+               } else if (valueStr.toUpperCase() === 'LOW') {
+                 value = 0;
+               } else {
+                 const valueVar = this.variableCheck(valueStr, instruction.line);
+                 if (valueVar.type !== PanSparkType.Number) {
+                   throw new Error(`DIGITAL_WRITE value must be a number at line ${instruction.line}`);
+                 }
+                 value = valueVar.value > 0 ? 1 : 0;
+               }
+               
+               // Store the digital write state
+               this.setVariableMemory(`__pin_${pin}_digital`, Num(value));
+               this.buffer.push(`DIGITAL_WRITE: pin ${pin} set to ${value === 1 ? 'HIGH' : 'LOW'}`);
+               break;
+             }
+             
+             case OpCode.DIGITAL_READ: {
+               // DIGITAL_READ pin >> result
+               // Reads digital value from pin and stores in result variable
+               const arrowIndex = instruction.args.indexOf('>>' );
+               if (arrowIndex === -1 || arrowIndex === 0 || arrowIndex === instruction.args.length - 1) {
+                 throw new Error(`Invalid DIGITAL_READ syntax at line ${instruction.line}. Expected: DIGITAL_READ pin >> result`);
+               }
+               
+               const pinStr = instruction.args[0];
+               const resultVar = instruction.args[arrowIndex + 1];
+               const pin = parseInt(pinStr);
+               
+               // Read the stored digital value (simulated)
+               const storedValue = this.variableMemory.get(`__pin_${pin}_digital`);
+               const readValue = storedValue ? storedValue.value : 0;
+               
+               this.setVariableMemory(resultVar, Num(readValue));
+               this.buffer.push(`DIGITAL_READ: pin ${pin} = ${readValue === 1 ? 'HIGH' : 'LOW'}`);
+               break;
+             }
+             
+             case OpCode.ANALOG_WRITE: {
+               // ANALOG_WRITE pin value
+               // PWM output: pin number, value: 0-255 (or 0-1.0)
+               const pinStr = instruction.args[0];
+               const valueStr = instruction.args[1];
+               const pin = parseInt(pinStr);
+               
+               const valueVar = this.variableCheck(valueStr, instruction.line);
+               if (valueVar.type !== PanSparkType.Number) {
+                 throw new Error(`ANALOG_WRITE value must be a number at line ${instruction.line}`);
+               }
+               
+               // Normalize to 0-255 range
+               let pwmValue = valueVar.value;
+               if (pwmValue > 1.0 && pwmValue <= 255) {
+                 // Already in 0-255 range
+               } else if (pwmValue >= 0 && pwmValue <= 1.0) {
+                 // Convert from 0-1.0 to 0-255
+                 pwmValue = Math.round(pwmValue * 255);
+               } else {
+                 // Clamp to 0-255
+                 pwmValue = Math.max(0, Math.min(255, pwmValue));
+               }
+               
+               this.setVariableMemory(`__pin_${pin}_pwm`, Num(pwmValue));
+               this.buffer.push(`ANALOG_WRITE: pin ${pin} (PWM) set to ${pwmValue}`);
+               break;
+             }
+             
+             case OpCode.ANALOG_READ: {
+               // ANALOG_READ pin >> result
+               // Reads analog value from pin (0-1023 or 0-1.0) and stores in result
+               const arrowIndex = instruction.args.indexOf('>>' );
+               if (arrowIndex === -1 || arrowIndex === 0 || arrowIndex === instruction.args.length - 1) {
+                 throw new Error(`Invalid ANALOG_READ syntax at line ${instruction.line}. Expected: ANALOG_READ pin >> result`);
+               }
+               
+               const pinStr = instruction.args[0];
+               const resultVar = instruction.args[arrowIndex + 1];
+               const pin = parseInt(pinStr);
+               
+               // Read the stored analog value (simulated)
+               const storedValue = this.variableMemory.get(`__pin_${pin}_analog`);
+               let readValue = storedValue ? storedValue.value : 0;
+               
+               // Normalize to 0-1023 range (typical Arduino analog read)
+               readValue = Math.max(0, Math.min(1023, readValue));
+               
+               this.setVariableMemory(resultVar, Num(readValue));
+               this.buffer.push(`ANALOG_READ: pin ${pin} = ${readValue}`);
+               break;
+             }
+            default:
+              throw new Error(`Unknown operation ${instruction.operation} at line ${instruction.line}`);
          }
           } catch (err) {
             // If an error occurs during execution and we're in a TRY block, catch it
@@ -2704,6 +2838,55 @@ export class PanSparkVM {
          
          case 'NOP': {
            arduinoCode.push(`${procIndent}; // NOP`);
+           break;
+         }
+         
+         // Hardware IO Operations
+         case 'PIN_MODE': {
+           // PIN_MODE pin INPUT/OUTPUT
+           const pin = tokens[1];
+           const mode = tokens[2];
+           const modeValue = mode.toUpperCase() === 'OUTPUT' ? 'OUTPUT' : 'INPUT';
+           arduinoCode.push(`${procIndent}pinMode(${pin}, ${modeValue});`);
+           break;
+         }
+         
+         case 'DIGITAL_WRITE': {
+           // DIGITAL_WRITE pin HIGH/LOW
+           const pin = tokens[1];
+           const value = tokens[2];
+           const digitalWriteValue = value.toUpperCase() === 'HIGH' ? 'HIGH' : 'LOW';
+           arduinoCode.push(`${procIndent}digitalWrite(${pin}, ${digitalWriteValue});`);
+           break;
+         }
+         
+         case 'DIGITAL_READ': {
+           // DIGITAL_READ pin >> result
+           const arrowIdx = tokens.indexOf('>>');
+           if (arrowIdx > 0) {
+             const pin = tokens[1];
+             const result = tokens[arrowIdx + 1];
+             arduinoCode.push(`${procIndent}setVariable("${result}", digitalRead(${pin}));`);
+           }
+           break;
+         }
+         
+         case 'ANALOG_WRITE': {
+           // ANALOG_WRITE pin value (PWM)
+           const pin = tokens[1];
+           const value = tokens[2];
+           arduinoCode.push(`${procIndent}analogWrite(${pin}, ${value});`);
+           break;
+         }
+         
+         case 'ANALOG_READ': {
+           // ANALOG_READ pin >> result
+           const arrowIdx = tokens.indexOf('>>');
+           if (arrowIdx > 0) {
+             const pin = tokens[1];
+             const result = tokens[arrowIdx + 1];
+             arduinoCode.push(`${procIndent}setVariable("${result}", analogRead(${pin}));`);
+           }
            break;
          }
          
