@@ -8,7 +8,7 @@ const vm1 = new PanSparkVM();
 
 let code1: string = `
 // ===== BASIC OPERATIONS =====
-ECHO "Program started successfully"
+PRINT "Program started successfully"
 
 // ===== VARIABLE OPERATIONS =====
 SET 42 >> answer
@@ -38,15 +38,15 @@ MATH 3.9 log10 >> log10Result
 MATH 32.21 exp >> expXResult
 
 // ===== PRINT OPERATIONS =====
-ECHO "=== Math Operation Results ==="
-ECHO "Basic Operations:"
+PRINT "=== Math Operation Results ==="
+PRINT "Basic Operations:"
 PRINT addResult
 PRINT subResult
 PRINT mulResult
 PRINT divResult
 PRINT modResult
 
-ECHO "Advanced Math:"
+PRINT "Advanced Math:"
 PRINT expResult
 PRINT sqrtResult
 PRINT logResult
@@ -62,14 +62,14 @@ PRINT log10Result
 PRINT expXResult
 
 // ===== MEMORY OPERATIONS =====
-ECHO "=== Memory Operations ==="
+PRINT "=== Memory Operations ==="
 SET 999 >> tempVar
 PRINT tempVar
 FREE tempVar
-ECHO "Variable freed from memory"
+PRINT "Variable freed from memory"
 
 // ===== INCREMENT/DECREMENT OPERATIONS =====
-ECHO "=== Increment/Decrement Operations ==="
+PRINT "=== Increment/Decrement Operations ==="
 SET 10 >> counter
 PRINT counter
 INC counter
@@ -80,25 +80,25 @@ PRINT counter
 
 
 // ===== MEMORY DEBUGGING =====
-ECHO "=== Memory Dump ==="
+PRINT "=== Memory Dump ==="
 MEMDUMP
 
 // ===== TICK COUNTER =====
-ECHO "=== Execution Counter ==="
+PRINT "=== Execution Counter ==="
 TICK currentTick
 PRINT currentTick
 
 // ===== CONTROL FLOW =====
-ECHO "=== Control Flow - Loops ==="
+PRINT "=== Control Flow - Loops ==="
 SET 0 >> loopCounter
 POINT loop_start
 MATH loopCounter + 1 >> loopCounter
-ECHO "Loop iteration:"
+PRINT "Loop iteration:"
 PRINT loopCounter
 IF loopCounter < 5 >> loop_start
 
 // ===== CONDITIONAL JUMPS =====
-ECHO "=== Conditional Jumps ==="
+PRINT "=== Conditional Jumps ==="
 SET 10 >> x
 SET 15 >> y
 
@@ -108,56 +108,56 @@ IF x == y >> equal
 JUMP comparisons_done
 
 POINT greater
-ECHO "X is greater than Y"
+PRINT "X is greater than Y"
 PRINT 9001
 JUMP comparisons_done
 
 POINT less
-ECHO "X is less than Y"
+PRINT "X is less than Y"
 PRINT 9000
 JUMP comparisons_done
 
 POINT equal
-ECHO "X equals Y"
+PRINT "X equals Y"
 PRINT 9002
 
 POINT comparisons_done
-ECHO "Comparisons completed"
+PRINT "Comparisons completed"
 
 // ===== ADVANCED COMPARISONS =====
-ECHO "=== Advanced Comparisons ==="
+PRINT "=== Advanced Comparisons ==="
 SET 20 >> a
 SET 20 >> b
 
 IF a >= b >> greater_equal
-ECHO "A is not >= B"
+PRINT "A is not >= B"
 JUMP not_greater_equal
 
 POINT greater_equal
-ECHO "A is >= B"
+PRINT "A is >= B"
 
 POINT not_greater_equal
 
 IF a <= b >> less_equal
-ECHO "A is not <= B"
+PRINT "A is not <= B"
 JUMP not_less_equal
 
 POINT less_equal
-ECHO "A is <= B"
+PRINT "A is <= B"
 
 POINT not_less_equal
 
 IF a != b >> not_equal
-ECHO "A equals B"
+PRINT "A equals B"
 JUMP are_equal
 
 POINT not_equal
-ECHO "A does not equal B"
+PRINT "A does not equal B"
 
 POINT are_equal
 
 // ===== PROCEDURES (PROCs) =====
-ECHO "=== Procedures ==="
+PRINT "=== Procedures ==="
 
 // Define a PROC to calculate factorial
 PROC factorial (n)
@@ -202,29 +202,29 @@ PROC max_two (a, b)
 ENDPROC
 
 // Call procedures and demonstrate results
-ECHO "Calculating factorial of 5:"
+PRINT "Calculating factorial of 5:"
 CALL factorial (5) >> factorial_result
 PRINT factorial_result
 
-ECHO "Calculating Fibonacci of 5:"
+PRINT "Calculating Fibonacci of 5:"
 CALL fibonacci (5) >> fib_result
 PRINT fib_result
 
-ECHO "Finding max of 25 and 17:"
+PRINT "Finding max of 25 and 17:"
 CALL max_two (25, 17) >> max_result
 PRINT max_result
 
 
 // ===== NO OPERATION =====
-ECHO "=== No Operation Test ==="
+PRINT "=== No Operation Test ==="
 NOP
-ECHO "NOP executed successfully"
+PRINT "NOP executed successfully"
 
 // ===== FINAL MEMORY STATE =====
-ECHO "=== Final Memory State ==="
+PRINT "=== Final Memory State ==="
 MEMDUMP
 
-ECHO "=== Program Execution Complete! ==="
+PRINT "=== Program Execution Complete! ==="
 
 // ===== END PROGRAM EXECUTION =====
 END`;

@@ -44,7 +44,6 @@ enum OpCode {
   SET,
   MATH,
   PRINT,
-  ECHO,
   POINT,
   JUMP,
   IF,
@@ -1659,20 +1658,31 @@ export class PanSparkVM {
             break;
           }
           case OpCode.PRINT: {
-            const printVar = this.variableCheck(instruction.args[0], instruction.line);
-            if (printVar.type === PanSparkType.Number) {
-              this.buffer.push(printVar.value.toString());
-            } else if (printVar.type === PanSparkType.String) {
-              this.buffer.push(printVar.value);
-            } else if (printVar.type === PanSparkType.List) {
-              this.buffer.push("[" + printVar.value.toString()+"]");
+            // PRINT can handle both string literals (already processed by tokenizer) and variables
+            const arg = instruction.args[0];
+            
+            // Try to treat it as a variable first
+            try {
+              const printVar = this.variableCheck(arg, instruction.line);
+              if (printVar.type === PanSparkType.Number) {
+                this.buffer.push(printVar.value.toString());
+              } else if (printVar.type === PanSparkType.String) {
+                this.buffer.push(printVar.value);
+              } else if (printVar.type === PanSparkType.List) {
+                this.buffer.push("[" + printVar.value.toString()+"]");
+              }
+            } catch (e) {
+              // If it's not a variable, check if it's a number literal
+              const num = parseFloat(arg.toString());
+              if (!isNaN(num)) {
+                this.buffer.push(num.toString());
+              } else {
+                // Otherwise, treat it as a string literal (already processed by tokenizer)
+                this.buffer.push(arg.toString());
+              }
             }
             break;
           }
-           case OpCode.ECHO: {
-             this.buffer.push(instruction.args[0].toString());
-             break;
-           }
            case OpCode.TYPEOF: {
              // TYPEOF variable >> result
              const arrowIndex = instruction.args.indexOf(">>");

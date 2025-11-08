@@ -62,7 +62,7 @@ IF x > 5 >> do_something
 JUMP end
 
 POINT do_something
-ECHO "x is greater than 5"
+PRINT "x is greater than 5"
 
 POINT end
 END
@@ -107,8 +107,7 @@ PRINT result  // outputs: 120
 |--------|-------------|---------|
 | `SET` | Assign variable | `SET 10 >> x` or `SET x` |
 | `MATH` | Math operations | `MATH x + y >> result` |
-| `PRINT` | Output number/variable | `PRINT result` |
-| `ECHO` | Output string | `ECHO "Hello"` |
+| `PRINT` | Output values | `PRINT result` or `PRINT "Hello"` |
 | `IF` | Conditional jump | `IF x > 10 >> label` |
 | `JUMP` | Unconditional jump | `JUMP start` |
 | `POINT` | Define jump target | `POINT start` |

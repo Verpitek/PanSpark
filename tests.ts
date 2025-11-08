@@ -104,9 +104,9 @@ runTest("SET - Default to 0 when no value", () => {
   expectOutput(code, ["0"]);
 });
 
-runTest("ECHO - Print string", () => {
+runTest("PRINT - Print string literal", () => {
   const code = `
-    ECHO "Hello World"
+    PRINT "Hello World"
   `;
   expectOutput(code, ["Hello World"]);
 });
@@ -309,11 +309,11 @@ console.log("\n=== CONTROL FLOW: JUMP/POINT ===\n");
 
 runTest("JUMP - Unconditional jump", () => {
   const code = `
-    ECHO "Start"
+    PRINT "Start"
     JUMP end
-    ECHO "This should be skipped"
+    PRINT "This should be skipped"
     POINT end
-    ECHO "End"
+    PRINT "End"
   `;
   expectOutput(code, ["Start", "End"]);
 });
@@ -322,10 +322,10 @@ runTest("IF - Conditional jump (true condition)", () => {
   const code = `
     SET 10 >> x
     IF x > 5 >> greater
-    ECHO "Not greater"
+    PRINT "Not greater"
     JUMP done
     POINT greater
-    ECHO "Greater"
+    PRINT "Greater"
     POINT done
   `;
   expectOutput(code, ["Greater"]);
@@ -335,10 +335,10 @@ runTest("IF - Conditional jump (false condition)", () => {
   const code = `
     SET 3 >> x
     IF x > 5 >> greater
-    ECHO "Not greater"
+    PRINT "Not greater"
     JUMP done
     POINT greater
-    ECHO "Greater"
+    PRINT "Greater"
     POINT done
   `;
   expectOutput(code, ["Not greater"]);
@@ -348,10 +348,10 @@ runTest("IF - Equal comparison", () => {
   const code = `
     SET 42 >> x
     IF x == 42 >> match
-    ECHO "No match"
+    PRINT "No match"
     JUMP done
     POINT match
-    ECHO "Match"
+    PRINT "Match"
     POINT done
   `;
   expectOutput(code, ["Match"]);
@@ -362,10 +362,10 @@ runTest("IF - Not equal comparison", () => {
     SET 10 >> x
     SET 20 >> y
     IF x != y >> different
-    ECHO "Same"
+    PRINT "Same"
     JUMP done
     POINT different
-    ECHO "Different"
+    PRINT "Different"
     POINT done
   `;
   expectOutput(code, ["Different"]);
@@ -376,10 +376,10 @@ runTest("IF - Greater than or equal", () => {
     SET 20 >> a
     SET 20 >> b
     IF a >= b >> yes
-    ECHO "No"
+    PRINT "No"
     JUMP done
     POINT yes
-    ECHO "Yes"
+    PRINT "Yes"
     POINT done
   `;
   expectOutput(code, ["Yes"]);
@@ -390,10 +390,10 @@ runTest("IF - Less than or equal", () => {
     SET 15 >> a
     SET 20 >> b
     IF a <= b >> yes
-    ECHO "No"
+    PRINT "No"
     JUMP done
     POINT yes
-    ECHO "Yes"
+    PRINT "Yes"
     POINT done
   `;
   expectOutput(code, ["Yes"]);
@@ -443,7 +443,7 @@ runTest("BREAK - Exit loop early", () => {
       BREAK
       POINT continue_loop
     ENDFOR
-    ECHO "Done"
+    PRINT "Done"
   `;
   expectOutput(code, ["0", "1", "Done"]);
 });
@@ -468,7 +468,7 @@ console.log("\n=== PROCEDURES ===\n");
 runTest("PROC - Define and call simple procedure", () => {
   const code = `
     PROC greet ()
-      ECHO "Hello"
+      PRINT "Hello"
       RETURN
     ENDPROC
     CALL greet () >> result
@@ -575,7 +575,7 @@ console.log("\n=== LIST OPERATIONS ===\n");
 runTest("LIST_CREATE - Create empty list", () => {
   const code = `
     LIST_CREATE mylist
-    ECHO "List created"
+    PRINT "List created"
   `;
   expectOutput(code, ["List created"]);
 });
@@ -586,7 +586,7 @@ runTest("LIST_PUSH - Add elements to list", () => {
     LIST_PUSH 10 >> numbers
     LIST_PUSH 20 >> numbers
     LIST_PUSH 30 >> numbers
-    ECHO "Elements added"
+    PRINT "Elements added"
   `;
   expectOutput(code, ["Elements added"]);
 });
@@ -676,7 +676,7 @@ runTest("FREE - Remove variable from memory", () => {
     SET 42 >> temp
     PRINT temp
     FREE temp
-    ECHO "Variable freed"
+    PRINT "Variable freed"
   `;
   expectOutput(code, ["42", "Variable freed"]);
 });
@@ -718,10 +718,10 @@ runTest("TICK - Get instruction counter", () => {
 
 runTest("NOP - No operation", () => {
   const code = `
-    ECHO "Before"
+    PRINT "Before"
     NOP
     NOP
-    ECHO "After"
+    PRINT "After"
   `;
   expectOutput(code, ["Before", "After"]);
 });
@@ -803,7 +803,7 @@ runTest("State - Resume execution from saved state", () => {
     PRINT i
     MATH i + 1 >> i
     IF i < 3 >> loop_start
-    ECHO "Done"
+    PRINT "Done"
   `;
   const instructions = vm.compile(code);
   const gen = vm.run(instructions);
@@ -1030,7 +1030,7 @@ runTest("Invalid jump target throws error", () => {
 runTest("Procedure without return defaults to 0", () => {
   const code = `
     PROC no_return ()
-      ECHO "Doing something"
+      PRINT "Doing something"
     ENDPROC
     CALL no_return () >> result
     PRINT result
@@ -1040,9 +1040,9 @@ runTest("Procedure without return defaults to 0", () => {
 
 runTest("END - Terminate program", () => {
   const code = `
-    ECHO "Start"
+    PRINT "Start"
     END
-    ECHO "This should not print"
+    PRINT "This should not print"
   `;
   expectOutput(code, ["Start"]);
 });
@@ -1129,28 +1129,28 @@ console.log("\n=== STRING ESCAPE SEQUENCES ===\n");
 
 runTest("String escape - Newline character", () => {
   const code = `
-    ECHO "Line1\\nLine2"
+    PRINT "Line1\\nLine2"
   `;
   expectOutput(code, ["Line1\nLine2"]);
 });
 
 runTest("String escape - Tab character", () => {
   const code = `
-    ECHO "Col1\\tCol2"
+    PRINT "Col1\\tCol2"
   `;
   expectOutput(code, ["Col1\tCol2"]);
 });
 
 runTest("String escape - Escaped quotes", () => {
   const code = `
-    ECHO "She said \\"Hello\\""
+    PRINT "She said \\"Hello\\""
   `;
   expectOutput(code, ['She said "Hello"']);
 });
 
 runTest("String escape - Escaped backslash", () => {
   const code = `
-    ECHO "Path: C:\\\\Users\\\\Documents"
+    PRINT "Path: C:\\\\Users\\\\Documents"
   `;
   expectOutput(code, ["Path: C:\\Users\\Documents"]);
 });
@@ -1574,10 +1574,10 @@ runTest("IF with AND - Both true", () => {
      SET 10 >> x
      SET 20 >> y
      IF x < 15 AND y > 10 >> success
-     ECHO "Failed"
+     PRINT "Failed"
      JUMP end
      POINT success
-     ECHO "Success"
+     PRINT "Success"
      POINT end
    `;
    expectOutput(code, ["Success"]);
@@ -1588,10 +1588,10 @@ runTest("IF with AND - First false", () => {
      SET 10 >> x
      SET 20 >> y
      IF x > 15 AND y > 10 >> success
-     ECHO "Failed"
+     PRINT "Failed"
      JUMP end
      POINT success
-     ECHO "Success"
+     PRINT "Success"
      POINT end
    `;
    expectOutput(code, ["Failed"]);
@@ -1602,10 +1602,10 @@ runTest("IF with OR - First true", () => {
      SET 10 >> x
      SET 5 >> y
      IF x > 5 OR y > 10 >> success
-     ECHO "Failed"
+     PRINT "Failed"
      JUMP end
      POINT success
-     ECHO "Success"
+     PRINT "Success"
      POINT end
    `;
    expectOutput(code, ["Success"]);
@@ -1616,10 +1616,10 @@ runTest("IF with OR - Both false", () => {
      SET 2 >> x
      SET 3 >> y
      IF x > 10 OR y > 10 >> success
-     ECHO "Failed"
+     PRINT "Failed"
      JUMP end
      POINT success
-     ECHO "Success"
+     PRINT "Success"
      POINT end
    `;
    expectOutput(code, ["Failed"]);
@@ -1629,10 +1629,10 @@ runTest("IF with NOT", () => {
    const code = `
      SET 0 >> x
      IF NOT x >> success
-     ECHO "Failed"
+     PRINT "Failed"
      JUMP end
      POINT success
-     ECHO "Success"
+     PRINT "Success"
      POINT end
    `;
    expectOutput(code, ["Success"]);
@@ -1733,7 +1733,7 @@ runTest("TRY-CATCH - Catch division by zero", () => {
    const code = `
      TRY err
        MATH 10 / 0 >> result
-       ECHO "Should not reach here"
+       PRINT "Should not reach here"
      CATCH
        PRINT err
      ENDTRY
@@ -1745,9 +1745,9 @@ runTest("TRY-CATCH - No error, skip catch", () => {
    const code = `
      TRY err
        MATH 10 + 5 >> result
-       ECHO "Success"
+       PRINT "Success"
      CATCH
-       ECHO "Should not reach here"
+       PRINT "Should not reach here"
      ENDTRY
    `;
    expectOutput(code, ["Success"]);
@@ -1769,7 +1769,7 @@ runTest("TRY-CATCH - Undefined variable in try block", () => {
      TRY err
        PRINT undefined_variable
      CATCH
-       ECHO "Caught error"
+       PRINT "Caught error"
      ENDTRY
    `;
    expectOutputContains(code, "Caught error");
@@ -1781,11 +1781,11 @@ runTest("TRY-CATCH - Nested try blocks", () => {
        TRY inner_err
          THROW "Inner error"
        CATCH
-         ECHO "Inner catch"
+         PRINT "Inner catch"
        ENDTRY
-       ECHO "After inner try"
+       PRINT "After inner try"
      CATCH
-       ECHO "Outer catch"
+       PRINT "Outer catch"
      ENDTRY
    `;
    expectOutput(code, ["Inner catch", "After inner try"]);
