@@ -2830,7 +2830,7 @@ export class PanSparkVM {
            const varName = tokens[1];
            arduinoCode.push(`${procIndent}{`);
            arduinoCode.push(`${procIndent}  int idx = findVariable("${varName}");`);
-           arduinoCode.push(`${procIndent}  if (idx >= 0) variables[idx].data.numValue++;`);
+           arduinoCode.push(`${procIndent}  if (idx >= 0) variables[idx].numValue++;`);
            arduinoCode.push(`${procIndent}}`);
            break;
          }
@@ -2839,7 +2839,7 @@ export class PanSparkVM {
            const varName = tokens[1];
            arduinoCode.push(`${procIndent}{`);
            arduinoCode.push(`${procIndent}  int idx = findVariable("${varName}");`);
-           arduinoCode.push(`${procIndent}  if (idx >= 0) variables[idx].data.numValue--;`);
+           arduinoCode.push(`${procIndent}  if (idx >= 0) variables[idx].numValue--;`);
            arduinoCode.push(`${procIndent}}`);
            break;
          }
@@ -2890,15 +2890,15 @@ export class PanSparkVM {
            break;
          }
          
-         case 'MEMDUMP': {
-           arduinoCode.push(`${procIndent}Serial.println("=== MEMORY DUMP ===\");`);
-           arduinoCode.push(`${procIndent}for (int i = 0; i < varCount; i++) {`);
-           arduinoCode.push(`${procIndent}  Serial.print(varNames[i]);`);
-           arduinoCode.push(`${procIndent}  Serial.print(": ");`);
-           arduinoCode.push(`${procIndent}  Serial.println(variables[i].data.numValue);`);
-           arduinoCode.push(`${procIndent}}`);
-           break;
-         }
+          case 'MEMDUMP': {
+            arduinoCode.push(`${procIndent}Serial.println("=== MEMORY DUMP ===\");`);
+            arduinoCode.push(`${procIndent}for (int i = 0; i < varCount; i++) {`);
+            arduinoCode.push(`${procIndent}  Serial.print(varNames[i]);`);
+            arduinoCode.push(`${procIndent}  Serial.print(": ");`);
+            arduinoCode.push(`${procIndent}  Serial.println(variables[i].numValue);`);
+            arduinoCode.push(`${procIndent}}`);
+            break;
+          }
          
          case 'NOP': {
            arduinoCode.push(`${procIndent}; // NOP`);
