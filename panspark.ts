@@ -2668,13 +2668,21 @@ export class PanSparkVM {
      arduinoCode.push('    idx = varCount++;');
      arduinoCode.push('    strcpy(varNames[idx], name);');
      arduinoCode.push('  }');
-     arduinoCode.push('  variables[idx].type = Variable::NUMBER;');
-     arduinoCode.push('  variables[idx].data.numValue = value;');
-     arduinoCode.push('  return idx;');
-     arduinoCode.push('}');
-     arduinoCode.push('');
-     
-     // Parse and transpile each line
+      arduinoCode.push('  variables[idx].type = Variable::NUMBER;');
+      arduinoCode.push('  variables[idx].data.numValue = value;');
+      arduinoCode.push('  return idx;');
+      arduinoCode.push('}');
+      arduinoCode.push('');
+      
+      arduinoCode.push('// Helper function to get variable value');
+      arduinoCode.push('float getVariable(const char* name) {');
+      arduinoCode.push('  int idx = findVariable(name);');
+      arduinoCode.push('  if (idx >= 0) return variables[idx].data.numValue;');
+      arduinoCode.push('  return 0.0;  // Default to 0 if not found');
+      arduinoCode.push('}');
+      arduinoCode.push('');
+      
+      // Parse and transpile each line
      arduinoCode.push('void setup() {');
      arduinoCode.push('  Serial.begin(9600);');
      arduinoCode.push('  Serial.println("PanSpark Arduino Sketch Started");');
@@ -2702,8 +2710,17 @@ export class PanSparkVM {
        
        switch (opcode) {
          case 'PRINT': {
-           const arg = tokens.slice(1).join(' ').replace(/"/g, '');
-           arduinoCode.push(`${procIndent}Serial.println("${arg}");`);
+           const arg = tokens.slice(1).join(' ');
+           // Check if arg is a string literal (starts and ends with quotes)
+           if ((arg.startsWith('"') && arg.endsWith('"')) || (arg.startsWith("'") && arg.endsWith("'"))) {
+             // It's a string literal
+             const str = arg.slice(1, -1);
+             arduinoCode.push(`${procIndent}Serial.println("${str}");`);
+           } else {
+             // It's a variable - use getVariable
+             const varName = arg.trim();
+             arduinoCode.push(`${procIndent}Serial.println(getVariable("${varName}"));`);
+           }
            break;
          }
          
@@ -2711,7 +2728,13 @@ export class PanSparkVM {
            // SET value >> variable
            const arrowIdx = tokens.indexOf('>>');
            if (arrowIdx > 0) {
-             const value = tokens.slice(1, arrowIdx).join(' ');
+             let value = tokens.slice(1, arrowIdx).join(' ');
+             // Replace variable references with getVariable calls
+             value = value.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g, (match) => {
+               // Don't replace if it's a number or quoted string
+               if (!isNaN(parseFloat(match))) return match;
+               return `getVariable("${match}")`;
+             });
              const varName = tokens[arrowIdx + 1];
              arduinoCode.push(`${procIndent}setVariable("${varName}", ${value});`);
            }
@@ -2722,7 +2745,17 @@ export class PanSparkVM {
            // MATH expression >> result
            const arrowIdx = tokens.indexOf('>>');
            if (arrowIdx > 0) {
-             const expr = tokens.slice(1, arrowIdx).join(' ');
+             let expr = tokens.slice(1, arrowIdx).join(' ');
+             // Replace variable references with getVariable calls
+             expr = expr.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g, (match) => {
+               // Don't replace mathematical function names or operators
+               if (['sqrt', 'sin', 'cos', 'tan', 'log', 'exp', 'abs', 'floor', 'ceil', 'round', 'pow'].includes(match)) {
+                 return match;
+               }
+               // Don't replace if it's a number
+               if (!isNaN(parseFloat(match))) return match;
+               return `getVariable("${match}")`;
+             });
              const result = tokens[arrowIdx + 1];
              arduinoCode.push(`${procIndent}setVariable("${result}", ${expr});`);
            }
@@ -2733,7 +2766,17 @@ export class PanSparkVM {
            // IF condition >> label
            const arrowIdx = tokens.indexOf('>>');
            if (arrowIdx > 0) {
-             const condition = tokens.slice(1, arrowIdx).join(' ');
+             let condition = tokens.slice(1, arrowIdx).join(' ');
+             // Replace variable names with getVariable calls
+             // Match identifiers that are not numbers or operators
+             condition = condition.replace(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g, (match) => {
+               // Don't replace comparison operators or reserved words
+               if (['if', 'else', 'while', 'for'].includes(match.toLowerCase())) return match;
+               // Don't replace single letter operators in some contexts
+               if (match.length === 1 && ['<', '>', '=', '!'].includes(match)) return match;
+               // Replace variable names with getVariable calls
+               return `getVariable("${match}")`;
+             });
              const label = tokens[arrowIdx + 1];
              const labelNum = labelCounter++;
              jumpPoints.set(label, labelNum);
