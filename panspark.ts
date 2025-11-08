@@ -2646,12 +2646,7 @@ export class PanSparkVM {
      arduinoCode.push('int varCount = 0;');
      arduinoCode.push('');
      
-     // Jump points map
-     arduinoCode.push('// Jump point labels');
-     const jumpPoints = new Map<string, number>();
-     let labelCounter = 0;
-     
-     // Helper functions
+      // Helper functions
      arduinoCode.push('// Helper function to find variable by name');
      arduinoCode.push('int findVariable(const char* name) {');
      arduinoCode.push('  for (int i = 0; i < varCount; i++) {');
@@ -2689,24 +2684,52 @@ export class PanSparkVM {
      arduinoCode.push('}');
      arduinoCode.push('');
      
-     arduinoCode.push('void loop() {');
-     arduinoCode.push('  // Main execution loop');
-     
-     let inProc = false;
-     let procIndent = '  ';
-     
-     for (let i = 0; i < lines.length; i++) {
-       let line = lines[i].trim();
-       
-       // Skip empty lines and comments
-       const commentIndex = line.indexOf('//');
-       if (commentIndex !== -1) {
-         line = line.substring(0, commentIndex).trim();
-       }
-       if (line === '') continue;
-       
-       const tokens = line.split(/\s+/);
-       const opcode = tokens[0].toUpperCase();
+      arduinoCode.push('void loop() {');
+      arduinoCode.push('  // Main execution loop');
+      
+      // First pass: collect all POINT labels
+      const jumpPoints = new Map<string, number>();
+      let labelCounter = 0;
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i].trim();
+        const commentIndex = line.indexOf('//');
+        if (commentIndex !== -1) {
+          line = line.substring(0, commentIndex).trim();
+        }
+        if (line === '') continue;
+        const tokens = line.split(/\s+/);
+        const opcode = tokens[0].toUpperCase();
+        if (opcode === 'POINT') {
+          const label = tokens[1];
+          if (!jumpPoints.has(label)) {
+            jumpPoints.set(label, labelCounter++);
+          }
+        }
+      }
+      
+      let inProc = false;
+      let procIndent = '  ';
+      
+      // Declare all labels upfront so goto can reference them
+      if (jumpPoints.size > 0) {
+        for (const [label, num] of jumpPoints.entries()) {
+          arduinoCode.push(`  bool label_${num}_skip = false;`);
+        }
+        arduinoCode.push('');
+      }
+      
+      for (let i = 0; i < lines.length; i++) {
+        let line = lines[i].trim();
+        
+        // Skip empty lines and comments
+        const commentIndex = line.indexOf('//');
+        if (commentIndex !== -1) {
+          line = line.substring(0, commentIndex).trim();
+        }
+        if (line === '') continue;
+        
+        const tokens = line.split(/\s+/);
+        const opcode = tokens[0].toUpperCase();
        
        switch (opcode) {
          case 'PRINT': {
@@ -2777,24 +2800,22 @@ export class PanSparkVM {
                // Replace variable names with getVariable calls
                return `getVariable("${match}")`;
              });
-             const label = tokens[arrowIdx + 1];
-             const labelNum = labelCounter++;
-             jumpPoints.set(label, labelNum);
-             arduinoCode.push(`${procIndent}if (${condition}) {`);
-             arduinoCode.push(`${procIndent}  goto label_${labelNum};`);
-             arduinoCode.push(`${procIndent}}`);
-           }
-           break;
-         }
-         
-         case 'POINT': {
-           // Jump label
-           const label = tokens[1];
-           const labelNum = labelCounter++;
-           jumpPoints.set(label, labelNum);
-           arduinoCode.push(`${procIndent}label_${labelNum}:`);
-           break;
-         }
+              const label = tokens[arrowIdx + 1];
+              const labelNum = jumpPoints.get(label) ?? 0;
+              arduinoCode.push(`${procIndent}if (${condition}) {`);
+              arduinoCode.push(`${procIndent}  goto label_${labelNum};`);
+              arduinoCode.push(`${procIndent}}`);
+            }
+            break;
+          }
+          
+          case 'POINT': {
+            // Jump label
+            const label = tokens[1];
+            const labelNum = jumpPoints.get(label) ?? 0;
+            arduinoCode.push(`${procIndent}label_${labelNum}:`);
+            break;
+          }
          
          case 'WAIT': {
            // WAIT milliseconds
@@ -2803,14 +2824,13 @@ export class PanSparkVM {
            break;
          }
          
-         case 'JUMP': {
-           // JUMP to label
-           const label = tokens[1];
-           const labelNum = jumpPoints.get(label) ?? labelCounter++;
-           if (!jumpPoints.has(label)) jumpPoints.set(label, labelNum);
-           arduinoCode.push(`${procIndent}goto label_${labelNum};`);
-           break;
-         }
+          case 'JUMP': {
+            // JUMP to label
+            const label = tokens[1];
+            const labelNum = jumpPoints.get(label) ?? 0;
+            arduinoCode.push(`${procIndent}goto label_${labelNum};`);
+            break;
+          }
          
          case 'INC': {
            const varName = tokens[1];
