@@ -2753,6 +2753,13 @@ export class PanSparkVM {
            break;
          }
          
+         case 'WAIT': {
+           // WAIT milliseconds
+           const ms = tokens[1];
+           arduinoCode.push(`${procIndent}delay(${ms});`);
+           break;
+         }
+         
          case 'JUMP': {
            // JUMP to label
            const label = tokens[1];
