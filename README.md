@@ -12,9 +12,9 @@ A tick-based interpreted OpCode scripting language designed for predictable perf
 - **One Operation Per Line**: Predictable execution model with strict syntax
 - **High Performance**: Pre-compiled instructions and optimized execution
 - **Extensible**: Easy-to-create custom OpCodes via module system
-- **Built-in Types**: Numbers, Strings, and Lists with comprehensive operations
+- **Built-in Types**: Numbers, Strings, Lists, and Structs with comprehensive operations
 - **Procedures**: Isolated memory scopes with parameter passing and return values
-- **Detailed Error Handling**: Clear error messages with line numbers
+- **Error Handling**: Try-catch blocks for graceful error management
 - **Memory Management**: Manual virtual memory control with `FREE` operation
 - **List Operations**: Create, manipulate, and sort lists of numbers
 
@@ -87,14 +87,14 @@ PRINT smallest  // outputs: 10
 
 ```panspark
 PROC factorial (n) {
-  IF n <= 1 >> base_case
-  MATH n - 1 >> n_minus_1
-  CALL factorial (n_minus_1) >> result
-  MATH n * result >> final
-  RETURN final
-  
-  POINT base_case
-  RETURN 1
+   IF n <= 1 >> base_case
+   MATH n - 1 >> n_minus_1
+   CALL factorial (n_minus_1) >> result
+   MATH n * result >> final
+   RETURN final
+   
+   POINT base_case
+   RETURN 1
 }
 
 CALL factorial (5) >> result
