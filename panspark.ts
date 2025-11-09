@@ -29,16 +29,33 @@ enum PanSparkType {
   Number,
   String,
   List,
+  Struct,
 }
+
+type StructField = {
+  type: 'number' | 'string' | 'list';
+};
+
+type StructDefinition = {
+  name: string;
+  fields: Map<string, StructField>;
+};
+
+type StructInstance = {
+  structName: string;
+  data: Map<string, Variable>;
+};
 
 type Variable =
   | { type: PanSparkType.Number; value: number }
   | { type: PanSparkType.String; value: string }
-  | { type: PanSparkType.List; value: number[] };
+  | { type: PanSparkType.List; value: number[] }
+  | { type: PanSparkType.Struct; value: StructInstance };
   
 export const Num = (value: number): Variable => ({ type: PanSparkType.Number, value });
 export const Str = (value: string): Variable => ({ type: PanSparkType.String, value });
 export const List = (value: number[]): Variable => ({ type: PanSparkType.List, value });
+export const Struct = (value: StructInstance): Variable => ({ type: PanSparkType.Struct, value });
 
 enum OpCode {
   SET,
@@ -87,11 +104,16 @@ enum OpCode {
    STR_CONTAINS,
    STR_CHAR,
    
-   TYPEOF,
-   TRY,
-   CATCH,
-   ENDTRY,
-   THROW
+    TYPEOF,
+    TRY,
+    CATCH,
+    ENDTRY,
+    THROW,
+    
+    STRUCT,
+    STRUCTEND,
+    STRUCT_GET,
+    STRUCT_SET,
 }
 
 // Pre-compiled instruction with resolved indices
@@ -381,6 +403,7 @@ class ExpressionParser {
 // Pre-compiled regex
 // Updated regex to support escape sequences in strings
 // Note: Parentheses are captured to support both CALL syntax and expression parsing
+// Also handles dot notation for struct field access (var.field)
 const TOKEN_REGEX = /"((?:\\.|[^"\\])*)"|\[([^\]]*)\]|\s*>>\s*(\S+)|\(([^)]*)\)|(\S+)/g;
 
 // Helper function to process escape sequences in strings
@@ -424,6 +447,11 @@ export class PanSparkVM {
   // Custom opcodes
   private customOpCodes: Map<string, OpCodeHandler> = new Map();
   private importedModules: Set<string> = new Set();
+  
+  // Struct state
+  private structDefinitions: Map<string, StructDefinition> = new Map();
+  private currentStructDef: StructDefinition | null = null;
+  private inStructDef: boolean = false;
   
   // Math operation lookup tables (inlined for common ops)
   private binaryMathOps: Map<string, (a: number, b: number) => number> = new Map([
@@ -714,92 +742,139 @@ export class PanSparkVM {
     this.jumpPoints.clear();
     this.procPoints.clear();
 
-     // Track FOR/ENDFOR and TRY/CATCH depth incrementally during compilation
-     let forDepth = 0;
-     let tryDepth = 0;
+      // Track FOR/ENDFOR and TRY/CATCH depth incrementally during compilation
+      let forDepth = 0;
+      let tryDepth = 0;
+      let structDepth = 0;
+      let structDef: StructDefinition | null = null;
 
-     // Pass 1: Tokenize and create instructions
-     for (let counter = 0; counter < lines.length; counter++) {
-       let line = lines[counter].trim();
-       
-       // Strip inline comments (// anywhere in the line)
-       const commentIndex = line.indexOf("//");
-       if (commentIndex !== -1) {
-         line = line.substring(0, commentIndex).trim();
-       }
-       
-       if (line === "") {
-         continue;
-       }
-       
-       TOKEN_REGEX.lastIndex = 0; // Reset regex state
-       let tokens = [];
-       let match;
-       
-       while ((match = TOKEN_REGEX.exec(line)) !== null) {
-         if (match[1] !== undefined) {
-           // Process escape sequences in strings
-           tokens.push(processEscapeSequences(match[1]));
-         } else if (match[2] !== undefined) {
-           // Bracket content (list syntax)
-           tokens.push(`${match[2]}`);
-         } else if (match[3] !== undefined) {
-           // >> operator
-           tokens.push(">>", match[3]);
-         } else if (match[4] !== undefined) {
-           // Parenthesis content - for CALL syntax, just extract the content
-           tokens.push(match[4]);
-         } else if (match[5] !== undefined) {
-           // General token (includes bare parentheses)
-           tokens.push(match[5]);
-         }
-       }
+      // Pass 1: Tokenize and create instructions
+      for (let counter = 0; counter < lines.length; counter++) {
+        let line = lines[counter].trim();
+        
+        // Strip inline comments (// anywhere in the line)
+        const commentIndex = line.indexOf("//");
+        if (commentIndex !== -1) {
+          line = line.substring(0, commentIndex).trim();
+        }
+        
+        if (line === "") {
+          continue;
+        }
+        
+        TOKEN_REGEX.lastIndex = 0; // Reset regex state
+        let tokens = [];
+        let match;
+        
+        while ((match = TOKEN_REGEX.exec(line)) !== null) {
+          if (match[1] !== undefined) {
+            // Process escape sequences in strings
+            tokens.push(processEscapeSequences(match[1]));
+          } else if (match[2] !== undefined) {
+            // Bracket content (list syntax)
+            tokens.push(`${match[2]}`);
+          } else if (match[3] !== undefined) {
+            // >> operator
+            tokens.push(">>", match[3]);
+          } else if (match[4] !== undefined) {
+            // Parenthesis content - for CALL syntax, just extract the content
+            tokens.push(match[4]);
+          } else if (match[5] !== undefined) {
+            // General token (includes bare parentheses)
+            tokens.push(match[5]);
+          }
+        }
 
-       if (tokens.length === 0) {
-         continue;
-       }
-       
-       const opName = tokens[0].toUpperCase();
-       let operation: OpCode | string | undefined = OpCode[tokens[0].toUpperCase() as keyof typeof OpCode];
-       
-       if (operation === undefined && this.customOpCodes.has(opName)) {
-         operation = opName;
-       }
-       
-       if (operation === undefined) {
-         operation = opName;
-       }
-       
-       const compiledInstruction: CompiledInstruction = {
-         operation,
-         args: tokens.slice(1),
-         line: counter + 1,
-       };
+        if (tokens.length === 0) {
+          continue;
+        }
+        
+        const opName = tokens[0].toUpperCase();
+        let operation: OpCode | string | undefined = OpCode[tokens[0].toUpperCase() as keyof typeof OpCode];
+        
+        if (operation === undefined && this.customOpCodes.has(opName)) {
+          operation = opName;
+        }
+        
+        if (operation === undefined) {
+          operation = opName;
+        }
+
+        // Handle STRUCT and STRUCTEND for compilation
+        if (operation === OpCode.STRUCT) {
+          structDepth++;
+          const structName = tokens[1];
+          structDef = {
+            name: structName,
+            fields: new Map(),
+          };
+          continue; // Skip adding STRUCT to instructions
+        } else if (operation === OpCode.STRUCTEND) {
+          structDepth--;
+          if (structDef) {
+            this.structDefinitions.set(structDef.name, structDef);
+            structDef = null;
+          }
+          continue; // Skip adding STRUCTEND to instructions
+        }
+
+        // Handle struct field definitions (within STRUCT/STRUCTEND)
+        if (structDepth > 0 && operation !== OpCode.STRUCT && operation !== OpCode.STRUCTEND) {
+          // This is a field definition: fieldName: type (tokenizer produces [fieldName:, type])
+          if (tokens.length >= 2 && tokens[0].endsWith(':')) {
+            const fieldName = tokens[0].slice(0, -1); // Remove trailing ':'
+            const fieldType = tokens[1] as 'number' | 'string' | 'list';
+            if (!structDef) {
+              throw new Error(`Field definition outside STRUCT block at line ${counter + 1}`);
+            }
+            if (!['number', 'string', 'list'].includes(fieldType)) {
+              throw new Error(`Invalid field type "${fieldType}" at line ${counter + 1}`);
+            }
+            structDef.fields.set(fieldName, { type: fieldType });
+            continue; // Skip adding this as an instruction
+          }
+        }
+        
+        const compiledInstruction: CompiledInstruction = {
+          operation,
+          args: tokens.slice(1),
+          line: counter + 1,
+        };
        
        // Pre-cache custom opcode handler
        if (typeof operation === 'string' && this.customOpCodes.has(operation)) {
          compiledInstruction.customHandler = this.customOpCodes.get(operation);
        }
        
-       // Track FOR/ENDFOR depth incrementally (O(1) instead of O(n²))
-       if (operation === OpCode.FOR) {
-         forDepth++;
-       } else if (operation === OpCode.ENDFOR) {
-         forDepth--;
-         if (forDepth < 0) {
-           throw new Error(`Unexpected ENDFOR at line ${counter + 1} without matching FOR`);
-         }
-       }
-       
-       // Track TRY/CATCH/ENDTRY depth
-       if (operation === OpCode.TRY) {
-         tryDepth++;
-       } else if (operation === OpCode.ENDTRY) {
-         tryDepth--;
-         if (tryDepth < 0) {
-           throw new Error(`Unexpected ENDTRY at line ${counter + 1} without matching TRY`);
-         }
-       }
+        // Track FOR/ENDFOR depth incrementally (O(1) instead of O(n²))
+        if (operation === OpCode.FOR) {
+          forDepth++;
+        } else if (operation === OpCode.ENDFOR) {
+          forDepth--;
+          if (forDepth < 0) {
+            throw new Error(`Unexpected ENDFOR at line ${counter + 1} without matching FOR`);
+          }
+        }
+        
+        // Track TRY/CATCH/ENDTRY depth
+        if (operation === OpCode.TRY) {
+          tryDepth++;
+        } else if (operation === OpCode.ENDTRY) {
+          tryDepth--;
+          if (tryDepth < 0) {
+            throw new Error(`Unexpected ENDTRY at line ${counter + 1} without matching TRY`);
+          }
+        }
+
+        // Track STRUCT/STRUCTEND depth
+        if (operation === OpCode.STRUCT) {
+          structDepth++;
+        } else if (operation === OpCode.STRUCTEND) {
+          structDepth--;
+          if (structDepth < 0) {
+            throw new Error(`Unexpected STRUCTEND at line ${counter + 1} without matching STRUCT`);
+          }
+        }
        
        instructions.push(compiledInstruction);
      }
@@ -1042,38 +1117,42 @@ export class PanSparkVM {
        } else {
          try {
          switch (instruction.operation) {
-           case OpCode.SET: {
-             if (instruction.args.length === 1) {
-               if (isNaN(Number(instruction.args[0]))) {
-                 this.setVariableMemory(instruction.args[0], Num(0));
-               } else {
-                 throw new Error(`Invalid variable name '${instruction.args[0]}' at line ${instruction.line}`);
-               }
-             } else {
-               // Check if the first argument is a string literal
-               const firstArg = instruction.args[0];
-               let value: Variable;
-               
-               // Empty strings should always be treated as string literals
-               if (firstArg === '') {
-                 value = Str('');
-               } else if (!isNaN(Number(firstArg))) {
-                 // It's a numeric literal
-                 value = Num(Number(firstArg));
-               } else {
-                 // It's either a string or a variable name
-                 // Check if it's defined as a variable first
-                 try {
-                   value = this.variableCheck(firstArg, instruction.line);
-                 } catch {
-                   // If not a variable, treat it as a string literal
-                   value = Str(firstArg);
-                 }
-               }
-               this.setVariableMemory(instruction.args[2], value);
-             }
-             break;
-           }
+            case OpCode.SET: {
+              if (instruction.args.length === 1) {
+                if (isNaN(Number(instruction.args[0]))) {
+                  this.setVariableMemory(instruction.args[0], Num(0));
+                } else {
+                  throw new Error(`Invalid variable name '${instruction.args[0]}' at line ${instruction.line}`);
+                }
+              } else {
+                // Check if the first argument is a string literal
+                const firstArg = instruction.args[0];
+                let value: Variable;
+                
+                // Empty strings should always be treated as string literals
+                if (firstArg === '') {
+                  value = Str('');
+                } else if (!isNaN(Number(firstArg))) {
+                  // It's a numeric literal
+                  value = Num(Number(firstArg));
+                } else if (this.structDefinitions.has(firstArg)) {
+                  // It's a struct type name - create instance
+                  const instance = this.createStructInstance(firstArg);
+                  value = Struct(instance);
+                } else {
+                  // It's either a string or a variable name
+                  // Check if it's defined as a variable first
+                  try {
+                    value = this.variableCheck(firstArg, instruction.line);
+                  } catch {
+                    // If not a variable, treat it as a string literal
+                    value = Str(firstArg);
+                  }
+                }
+                this.setVariableMemory(instruction.args[2], value);
+              }
+              break;
+            }
           case OpCode.INC: {
             const incValue = this.variableCheck(instruction.args[0], instruction.line);
             if (incValue.type !== PanSparkType.Number) {
@@ -2233,25 +2312,66 @@ export class PanSparkVM {
              }
              break;
            }
-            case OpCode.THROW: {
-              // THROW message
-              const errorMsg = instruction.args[0] || "An error occurred";
-              this.lastError = errorMsg;
-              
-              if (this.tryStack.length > 0) {
-                const tryBlock = this.tryStack[this.tryStack.length - 1];
-                // Set error variable and jump to CATCH
-                this.setVariableMemory(tryBlock.errorVariable, Str(errorMsg));
-                // Mark that an error occurred
-                tryBlock.errorOccurred = true;
-                this.counter = tryBlock.catchLine - 1;
-              } else {
-                throw new Error(`THROW: ${errorMsg}`);
+             case OpCode.THROW: {
+               // THROW message
+               const errorMsg = instruction.args[0] || "An error occurred";
+               this.lastError = errorMsg;
+               
+               if (this.tryStack.length > 0) {
+                 const tryBlock = this.tryStack[this.tryStack.length - 1];
+                 // Set error variable and jump to CATCH
+                 this.setVariableMemory(tryBlock.errorVariable, Str(errorMsg));
+                 // Mark that an error occurred
+                 tryBlock.errorOccurred = true;
+                 this.counter = tryBlock.catchLine - 1;
+               } else {
+                 throw new Error(`THROW: ${errorMsg}`);
+               }
+               break;
+             }
+
+            case OpCode.STRUCT_GET: {
+              // STRUCT_GET var.field >> result
+              const varFieldStr = instruction.args[0];
+              const [varName, fieldName] = varFieldStr.split('.');
+
+              const varValue = this.variableCheck(varName, instruction.line);
+              if (varValue.type !== PanSparkType.Struct) {
+                throw new Error(`Variable "${varName}" is not a struct at line ${instruction.line}`);
               }
+
+              const fieldValue = this.getStructField(varValue.value, fieldName);
+              const destVar = instruction.args[2];
+              this.setVariableMemory(destVar, fieldValue);
               break;
             }
-           default:
-             throw new Error(`Unknown operation ${instruction.operation} at line ${instruction.line}`);
+
+            case OpCode.STRUCT_SET: {
+              // STRUCT_SET var.field value
+              const varFieldStr = instruction.args[0];
+              const [varName, fieldName] = varFieldStr.split('.');
+              const valueArg = instruction.args[1];
+
+              const varValue = this.variableCheck(varName, instruction.line);
+              if (varValue.type !== PanSparkType.Struct) {
+                throw new Error(`Variable "${varName}" is not a struct at line ${instruction.line}`);
+              }
+
+              // Try to get as variable first, fall back to string literal
+              let value: Variable;
+              try {
+                value = this.variableCheck(valueArg, instruction.line);
+              } catch {
+                // Not a variable, treat as string literal
+                value = Str(valueArg);
+              }
+
+              this.setStructField(varValue.value, fieldName, value);
+              break;
+            }
+
+            default:
+              throw new Error(`Unknown operation ${instruction.operation} at line ${instruction.line}`);
          }
           } catch (err) {
             // If an error occurs during execution and we're in a TRY block, catch it
@@ -2279,23 +2399,26 @@ export class PanSparkVM {
      return 0;
    }
 
-   public resetVM(): void {
-     this.variableMemory.clear();
-     this.jumpPoints.clear();
-     this.procPoints.clear();
-     this.buffer = [];
-     this.forStack = [];
-     this.procStack = [];
-     this.forStack = [];
-     this.framePool.clear();
-     this.procReturn = Num(0);
-     this.shouldReturn = false;
-     this.waitTicks = 0;
-     this.counter = 0;
-     this.importedModules.clear();
-     this.tryStack = [];
-     this.lastError = "";
-   }
+    public resetVM(): void {
+      this.variableMemory.clear();
+      this.jumpPoints.clear();
+      this.procPoints.clear();
+      this.buffer = [];
+      this.forStack = [];
+      this.procStack = [];
+      this.forStack = [];
+      this.framePool.clear();
+      this.procReturn = Num(0);
+      this.shouldReturn = false;
+      this.waitTicks = 0;
+      this.counter = 0;
+      this.importedModules.clear();
+      this.tryStack = [];
+      this.lastError = "";
+      this.structDefinitions.clear();
+      this.inStructDef = false;
+      this.currentStructDef = null;
+    }
 
   public getBuffer(): string[] {
     return this.buffer;
@@ -2351,16 +2474,20 @@ export class PanSparkVM {
         buffer: this.buffer,
         maxVariableCount: this.maxVariableCount,
         debugMode: this.debugMode,
-        instructions: instructions ? instructions.map(inst => ({
-          operation: inst.operation,
-          args: inst.args,
-          line: inst.line,
-          jumpTarget: inst.jumpTarget,
-          endForIndex: inst.endForIndex,
-        })) : null,
-      };
-      
-      const serialized = JSON.stringify(state);
+         instructions: instructions ? instructions.map(inst => ({
+           operation: inst.operation,
+           args: inst.args,
+           line: inst.line,
+           jumpTarget: inst.jumpTarget,
+           endForIndex: inst.endForIndex,
+         })) : null,
+         structDefinitions: Array.from(this.structDefinitions.entries()).map(([name, def]) => ({
+           name,
+           fields: Array.from(def.fields.entries()),
+         })),
+       };
+       
+       const serialized = JSON.stringify(state);
       const MAX_SIZE = 32767;
       
       if (serialized.length > MAX_SIZE) {
@@ -2406,19 +2533,30 @@ export class PanSparkVM {
           procName: frameData.procName,
           args: frameData.args.map((arg: any) => this.deserializeVariable(arg)),
         }));
-        this.forStack = state.forStack;
-        this.tryStack = state.tryStack || [];
-        this.lastError = state.lastError || "";
-        this.procReturn = this.deserializeVariable(state.procReturn);
-        this.shouldReturn = state.shouldReturn;
-        this.buffer = state.buffer;
-        this.maxVariableCount = state.maxVariableCount;
-        this.debugMode = state.debugMode;
-        
-        // Return instructions if they were saved
-        if (state.instructions) {
-          return state.instructions as CompiledInstruction[];
-        }
+         this.forStack = state.forStack;
+         this.tryStack = state.tryStack || [];
+         this.lastError = state.lastError || "";
+         this.procReturn = this.deserializeVariable(state.procReturn);
+         this.shouldReturn = state.shouldReturn;
+         this.buffer = state.buffer;
+         this.maxVariableCount = state.maxVariableCount;
+         this.debugMode = state.debugMode;
+
+         // Restore struct definitions
+         this.structDefinitions.clear();
+         if (state.structDefinitions) {
+           for (const structDef of state.structDefinitions) {
+             this.structDefinitions.set(structDef.name, {
+               name: structDef.name,
+               fields: new Map(structDef.fields),
+             });
+           }
+         }
+         
+         // Return instructions if they were saved
+         if (state.instructions) {
+           return state.instructions as CompiledInstruction[];
+         }
         
         return null;
       } catch (err) {
@@ -2440,18 +2578,25 @@ export class PanSparkVM {
    /**
     * Deserializes a Variable object from JSON format
     */
-   private deserializeVariable(data: any): Variable {
-     switch (data.type) {
-       case PanSparkType.Number:
-         return Num(data.value);
-       case PanSparkType.String:
-         return Str(data.value);
-       case PanSparkType.List:
-         return List(data.value);
-       default:
-         throw new Error(`Unknown variable type: ${data.type}`);
-     }
-   }
+    private deserializeVariable(data: any): Variable {
+      switch (data.type) {
+        case PanSparkType.Number:
+          return Num(data.value);
+        case PanSparkType.String:
+          return Str(data.value);
+        case PanSparkType.List:
+          return List(data.value);
+        case PanSparkType.Struct: {
+          const structData = new Map();
+          for (const [key, val] of Object.entries(data.value.data || {})) {
+            structData.set(key, this.deserializeVariable(val));
+          }
+          return Struct({ structName: data.value.structName, data: structData });
+        }
+        default:
+          throw new Error(`Unknown variable type: ${data.type}`);
+      }
+    }
 
    /**
     * Serializes a Map of variables to an array of [key, serialized_variable] pairs
@@ -2472,6 +2617,265 @@ export class PanSparkVM {
        varMap.set(key, this.deserializeVariable(value));
      }
      return varMap;
+   }
+
+   // ============ QR CODE COMPRESSION ============
+
+   /**
+    * Compress PanSpark code for QR encoding by removing comments and unnecessary whitespace
+    */
+   public compressCode(code: string): string {
+      // List of all valid opcodes
+      const opcodes = [
+        'SET', 'PRINT', 'MATH', 'IF', 'ELSE', 'ENDIF', 'JUMP', 'POINT', 'PROC', 'ENDPROC',
+        'CALL', 'RETURN', 'FOR', 'ENDFOR', 'BREAK', 'CONTINUE', 'TRY', 'CATCH', 'ENDTRY',
+        'THROW', 'LIST_CREATE', 'LIST_PUSH', 'LIST_POP', 'LIST_GET', 'LIST_SET', 'LIST_LENGTH',
+        'LIST_REVERSE', 'LIST_FIND', 'LIST_CONTAINS', 'LIST_REMOVE', 'LIST_SORT',
+        'STRUCT', 'STRUCTEND', 'STRUCT_GET', 'STRUCT_SET',
+        'INC', 'DEC', 'MEMSTATS', 'END', 'CONCAT', 'STRLEN', 'SUBSTR',
+        'TYPEOF', 'STR_UPPER', 'STR_LOWER', 'STR_TRIM', 'STR_REPLACE', 'STR_CONTAINS', 'STR_CHAR'
+      ];
+
+      // First, normalize the code by converting to tokens and detecting statement boundaries
+      const tokens = code.split(/\s+/).filter(t => t.length > 0);
+      const statements: string[] = [];
+      let currentStatement: string[] = [];
+
+      for (const token of tokens) {
+        if (opcodes.includes(token.toUpperCase()) && currentStatement.length > 0) {
+          // Found a new opcode, save the current statement
+          statements.push(currentStatement.join(' '));
+          currentStatement = [token];
+        } else {
+          currentStatement.push(token);
+        }
+      }
+
+      if (currentStatement.length > 0) {
+        statements.push(currentStatement.join(' '));
+      }
+
+      // Now process statements to remove comments and join with semicolon separators
+      return statements
+        .map(stmt => {
+          // Remove inline comments
+          const commentIdx = stmt.indexOf('//');
+          const cleanStmt = commentIdx > -1 ? stmt.substring(0, commentIdx) : stmt;
+          return cleanStmt.trim();
+        })
+        .filter(stmt => stmt.length > 0)
+        .join(';');  // Use semicolon to separate statements
+    }
+
+   /**
+    * Abbreviate opcodes to save space for QR codes
+    */
+   private abbreviateOpcodes(compressed: string): string {
+     const abbreviations: Record<string, string> = {
+       'SET': 'S',
+       'PRINT': 'P',
+       'MATH': 'M',
+       'IF': 'I',
+       'JUMP': 'J',
+       'POINT': 'PT',
+       'LIST_CREATE': 'LC',
+       'LIST_PUSH': 'LP',
+       'LIST_GET': 'LG',
+       'LIST_SET': 'LS',
+       'LIST_SORT': 'LST',
+       'CALL': 'C',
+       'PROC': 'PR',
+       'RETURN': 'R',
+       'FOR': 'F',
+       'ENDFOR': 'EF',
+       'BREAK': 'B',
+       'STRUCT': 'ST',
+       'STRUCTEND': 'STE',
+       'STRUCT_GET': 'STG',
+       'STRUCT_SET': 'STS',
+       'INC': 'IN',
+       'DEC': 'DC',
+     };
+
+     let abbreviated = compressed;
+     const sortedKeys = Object.keys(abbreviations).sort((a, b) => b.length - a.length);
+
+     for (const opcode of sortedKeys) {
+       const abbr = abbreviations[opcode];
+       const regex = new RegExp(`\\b${opcode}\\b`, 'g');
+       abbreviated = abbreviated.replace(regex, abbr);
+     }
+
+     return abbreviated;
+   }
+
+   /**
+    * Expand abbreviated opcodes back to full form
+    */
+    private expandOpcodes(abbreviated: string): string {
+      const expansions: Record<string, string> = {
+        'S': 'SET',
+        'P': 'PRINT',
+        'M': 'MATH',
+        'I': 'IF',
+        'J': 'JUMP',
+        'PT': 'POINT',
+        'LC': 'LIST_CREATE',
+        'LP': 'LIST_PUSH',
+        'LG': 'LIST_GET',
+        'LS': 'LIST_SET',
+        'LST': 'LIST_SORT',
+        'C': 'CALL',
+        'PR': 'PROC',
+        'R': 'RETURN',
+        'F': 'FOR',
+        'EF': 'ENDFOR',
+        'B': 'BREAK',
+        'ST': 'STRUCT',
+        'STE': 'STRUCTEND',
+        'STG': 'STRUCT_GET',
+        'STS': 'STRUCT_SET',
+        'IN': 'INC',
+        'DC': 'DEC',
+      };
+
+      let expanded = abbreviated;
+      const sortedKeys = Object.keys(expansions).sort((a, b) => b.length - a.length);
+
+      for (const abbr of sortedKeys) {
+        const opcode = expansions[abbr];
+        const regex = new RegExp(`\\b${abbr}\\b`, 'g');
+        expanded = expanded.replace(regex, opcode);
+      }
+
+      // Convert semicolon separators back to newlines
+      return expanded.replace(/;/g, '\n');
+    }
+
+   /**
+    * Encode program code to QR-friendly format (base64)
+    */
+   public encodeForQR(code: string): string {
+     const compressed = this.compressCode(code);
+     const abbreviated = this.abbreviateOpcodes(compressed);
+     return Buffer.from(abbreviated).toString('base64');
+   }
+
+   /**
+    * Decode QR code data back to executable program
+    */
+   public decodeFromQR(qrData: string): string {
+     const decoded = Buffer.from(qrData, 'base64').toString('utf-8');
+     return this.expandOpcodes(decoded);
+   }
+
+   /**
+    * Decode QR data to compiled instructions (ready to execute with run())
+    */
+   public decodeQRToInstructions(qrData: string): CompiledInstruction[] {
+     const code = this.decodeFromQR(qrData);
+     return this.compile(code);
+   }
+
+   /**
+    * Get compression statistics for code
+    */
+   public getCompressionStats(originalCode: string): {
+     original: number;
+     compressed: number;
+     abbreviated: number;
+     base64: number;
+     compressionRatio: number;
+   } {
+     const compressed = this.compressCode(originalCode);
+     const abbreviated = this.abbreviateOpcodes(compressed);
+     const base64 = Buffer.from(abbreviated).toString('base64');
+
+     return {
+       original: originalCode.length,
+       compressed: compressed.length,
+       abbreviated: abbreviated.length,
+       base64: base64.length,
+       compressionRatio: (abbreviated.length / originalCode.length) * 100,
+     };
+   }
+
+   // ============ STRUCT SUPPORT ============
+
+   /**
+    * Get a struct definition by name
+    */
+   public getStructDefinition(name: string): StructDefinition | undefined {
+     return this.structDefinitions.get(name);
+   }
+
+   /**
+    * Create a new struct instance
+    */
+   public createStructInstance(structName: string): StructInstance {
+     const def = this.structDefinitions.get(structName);
+     if (!def) {
+       throw new Error(`Struct definition "${structName}" not found`);
+     }
+
+     const data = new Map<string, Variable>();
+     // Initialize all fields with default values based on type
+     for (const [fieldName, fieldDef] of def.fields.entries()) {
+       switch (fieldDef.type) {
+         case 'number':
+           data.set(fieldName, Num(0));
+           break;
+         case 'string':
+           data.set(fieldName, Str(''));
+           break;
+         case 'list':
+           data.set(fieldName, List([]));
+           break;
+       }
+     }
+
+     return {
+       structName,
+       data,
+     };
+   }
+
+   /**
+    * Get field from struct instance
+    */
+   public getStructField(instance: StructInstance, fieldName: string): Variable {
+     if (!instance.data.has(fieldName)) {
+       throw new Error(`Field "${fieldName}" not found in struct "${instance.structName}"`);
+     }
+     return instance.data.get(fieldName)!;
+   }
+
+   /**
+    * Set field in struct instance with type checking
+    */
+   public setStructField(instance: StructInstance, fieldName: string, value: Variable): void {
+     const def = this.structDefinitions.get(instance.structName);
+     if (!def) {
+       throw new Error(`Struct definition "${instance.structName}" not found`);
+     }
+
+     const fieldDef = def.fields.get(fieldName);
+     if (!fieldDef) {
+       throw new Error(`Field "${fieldName}" not defined in struct "${instance.structName}"`);
+     }
+
+     // Type checking
+     if (fieldDef.type === 'number' && value.type !== PanSparkType.Number) {
+       throw new Error(`Field "${fieldName}" expects number but got different type`);
+     }
+     if (fieldDef.type === 'string' && value.type !== PanSparkType.String) {
+       throw new Error(`Field "${fieldName}" expects string but got different type`);
+     }
+     if (fieldDef.type === 'list' && value.type !== PanSparkType.List) {
+       throw new Error(`Field "${fieldName}" expects list but got different type`);
+     }
+
+     instance.data.set(fieldName, value);
    }
 }
 

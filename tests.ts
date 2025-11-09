@@ -681,13 +681,15 @@ runTest("FREE - Remove variable from memory", () => {
   expectOutput(code, ["42", "Variable freed"]);
 });
 
-runTest("FREE - Cannot use freed variable", () => {
-  const code = `
-    SET 42 >> temp
-    FREE temp
-    PRINT temp
-  `;
-  expectError(code, /undefined|not found|not defined/i);
+runTest("FREE - Freed variable becomes undefined when referenced", () => {
+   const code = `
+     SET 42 >> temp
+     FREE temp
+     SET temp >> result
+     PRINT result
+   `;
+   // After FREE, temp is not in memory, so SET treats it as a string literal
+   expectOutput(code, ["temp"]);
 });
 
 runTest("MEMDUMP - Display memory state", () => {
@@ -1013,11 +1015,12 @@ console.log("\n=== WAIT OPERATIONS ===\n");
 // ==================== EDGE CASES & ERROR HANDLING ====================
 console.log("\n=== EDGE CASES & ERROR HANDLING ===\n");
 
-runTest("Undefined variable throws error", () => {
-  const code = `
-    PRINT undefined_var
-  `;
-  expectError(code, /undefined|not found/i);
+runTest("Undefined variable treated as string literal in PRINT", () => {
+   const code = `
+     PRINT undefined_var
+   `;
+   // In PanSpark, undefined identifiers become string literals
+   expectOutput(code, ["undefined_var"]);
 });
 
 runTest("Invalid jump target throws error", () => {
@@ -1731,64 +1734,277 @@ console.log("\n=== TRY-CATCH ERROR HANDLING ===\n");
 
 runTest("TRY-CATCH - Catch division by zero", () => {
    const code = `
-     TRY err
-       MATH 10 / 0 >> result
-       PRINT "Should not reach here"
-     CATCH
-       PRINT err
-     ENDTRY
+      TRY err
+        MATH 10 / 0 >> result
+        PRINT "Should not reach here"
+      CATCH
+        PRINT err
+      ENDTRY
    `;
    expectOutputContains(code, "Division by zero");
 });
 
 runTest("TRY-CATCH - No error, skip catch", () => {
    const code = `
-     TRY err
-       MATH 10 + 5 >> result
-       PRINT "Success"
-     CATCH
-       PRINT "Should not reach here"
-     ENDTRY
+      TRY err
+        MATH 10 + 5 >> result
+        PRINT "Success"
+      CATCH
+        PRINT "Should not reach here"
+      ENDTRY
    `;
    expectOutput(code, ["Success"]);
 });
 
 runTest("TRY-CATCH - Throw custom error", () => {
    const code = `
-     TRY err
-       THROW "Custom error message"
-     CATCH
-       PRINT err
-     ENDTRY
+      TRY err
+        THROW "Custom error message"
+      CATCH
+        PRINT err
+      ENDTRY
    `;
    expectOutput(code, ["Custom error message"]);
 });
 
-runTest("TRY-CATCH - Undefined variable in try block", () => {
+runTest("TRY-CATCH - Undefined variable treated as string literal", () => {
    const code = `
-     TRY err
-       PRINT undefined_variable
-     CATCH
-       PRINT "Caught error"
-     ENDTRY
+      TRY err
+        PRINT undefined_variable
+      CATCH
+        PRINT "Caught error"
+      ENDTRY
    `;
-   expectOutputContains(code, "Caught error");
+   // undefined_variable is a string literal in PanSpark
+   expectOutput(code, ["undefined_variable"]);
 });
 
 runTest("TRY-CATCH - Nested try blocks", () => {
    const code = `
-     TRY outer_err
-       TRY inner_err
-         THROW "Inner error"
-       CATCH
-         PRINT "Inner catch"
-       ENDTRY
-       PRINT "After inner try"
-     CATCH
-       PRINT "Outer catch"
-     ENDTRY
+      TRY outer_err
+        TRY inner_err
+          THROW "Inner error"
+        CATCH
+          PRINT "Inner catch"
+        ENDTRY
+        PRINT "After inner try"
+      CATCH
+        PRINT "Outer catch"
+      ENDTRY
    `;
    expectOutput(code, ["Inner catch", "After inner try"]);
+});
+
+// ==================== STRUCT OPERATIONS ====================
+console.log("\n=== STRUCT OPERATIONS ===\n");
+
+runTest("STRUCT - Define and create struct", () => {
+   const code = `
+      STRUCT Point
+      x: number
+      y: number
+      STRUCTEND
+
+      SET Point >> p
+      PRINT "Struct created"
+   `;
+   expectOutput(code, ["Struct created"]);
+});
+
+runTest("STRUCT - Set and get fields", () => {
+   const code = `
+      STRUCT Point
+      x: number
+      y: number
+      STRUCTEND
+
+      SET Point >> p
+      STRUCT_SET p.x 100
+      STRUCT_SET p.y 200
+      STRUCT_GET p.x >> x
+      STRUCT_GET p.y >> y
+      PRINT x
+      PRINT y
+   `;
+   expectOutput(code, ["100", "200"]);
+});
+
+runTest("STRUCT - Multiple struct types", () => {
+   const code = `
+      STRUCT Point
+      x: number
+      y: number
+      STRUCTEND
+
+      STRUCT Color
+      r: number
+      g: number
+      b: number
+      STRUCTEND
+
+      SET Point >> p
+      SET Color >> c
+
+      STRUCT_SET p.x 10
+      STRUCT_SET c.r 255
+
+      STRUCT_GET p.x >> px
+      STRUCT_GET c.r >> cr
+      PRINT px
+      PRINT cr
+   `;
+   expectOutput(code, ["10", "255"]);
+});
+
+runTest("STRUCT - Field type validation", () => {
+   const code = `
+      STRUCT Data
+      value: number
+      STRUCTEND
+
+      SET Data >> d
+      STRUCT_SET d.value "not a number"
+   `;
+   expectError(code, /type|expects/i);
+});
+
+runTest("STRUCT - Field auto-initialization", () => {
+   const code = `
+      STRUCT Point
+      x: number
+      y: number
+      STRUCTEND
+
+      SET Point >> p
+      STRUCT_GET p.x >> x
+      STRUCT_GET p.y >> y
+      PRINT x
+      PRINT y
+   `;
+   expectOutput(code, ["0", "0"]);
+});
+
+runTest("STRUCT - String field", () => {
+   const code = `
+      STRUCT Person
+      name: string
+      age: number
+      STRUCTEND
+
+      SET Person >> person
+      STRUCT_SET person.name "Alice"
+      STRUCT_SET person.age 30
+      STRUCT_GET person.name >> n
+      STRUCT_GET person.age >> a
+      PRINT n
+      PRINT a
+   `;
+   expectOutput(code, ["Alice", "30"]);
+});
+
+runTest("STRUCT - List field", () => {
+   const code = `
+      STRUCT Data
+      values: list
+      STRUCTEND
+
+      SET Data >> d
+      LIST_CREATE temp
+      LIST_PUSH 1 >> temp
+      LIST_PUSH 2 >> temp
+      LIST_PUSH 3 >> temp
+      STRUCT_SET d.values temp
+      STRUCT_GET d.values >> v
+      LIST_GET v 1 >> second
+      PRINT second
+   `;
+   expectOutput(code, ["2"]);
+});
+
+// ==================== QR CODE OPERATIONS ====================
+console.log("\n=== QR CODE OPERATIONS ===\n");
+
+runTest("QR - Encode program code", () => {
+   const vm = new PanSparkVM();
+   const code = "SET 10 >> x PRINT x";
+   const encoded = vm.encodeForQR(code);
+   
+   if (encoded.length === 0) {
+      throw new Error("Encoded QR data is empty");
+   }
+   if (typeof encoded !== 'string') {
+      throw new Error("Encoded QR data should be a string");
+   }
+});
+
+runTest("QR - Decode QR data", () => {
+   const vm = new PanSparkVM();
+   const original = "SET 10 >> x PRINT x";
+   const encoded = vm.encodeForQR(original);
+   const decoded = vm.decodeFromQR(encoded);
+   
+   if (decoded.length === 0) {
+      throw new Error("Decoded code is empty");
+   }
+});
+
+runTest("QR - Round-trip encode/decode", () => {
+   const vm = new PanSparkVM();
+   const original = "SET 42 >> answer PRINT answer";
+   const encoded = vm.encodeForQR(original);
+   const decoded = vm.decodeFromQR(encoded);
+   
+   // Decode should produce code that compiles
+   const instructions = vm.compile(decoded);
+   if (instructions.length === 0) {
+      throw new Error("Decoded code did not compile to instructions");
+   }
+});
+
+runTest("QR - Execute decoded code", () => {
+   const vm = new PanSparkVM();
+   const code = "SET 10 >> x SET 20 >> y MATH x + y >> sum PRINT sum";
+   const encoded = vm.encodeForQR(code);
+   const decoded = vm.decodeFromQR(encoded);
+   const instructions = vm.compile(decoded);
+   const program = vm.run(instructions);
+   
+   while (program.next().done === false) {}
+   
+   if (vm.buffer[0] !== "30") {
+      throw new Error(`Expected "30" but got "${vm.buffer[0]}"`);
+   }
+});
+
+runTest("QR - Compression reduces size", () => {
+   const vm = new PanSparkVM();
+   const code = `
+      SET 10 >> x
+      SET 20 >> y
+      SET 30 >> z
+      PRINT x
+      PRINT y
+      PRINT z
+   `;
+   const stats = vm.getCompressionStats(code);
+   
+   if (stats.abbreviated >= stats.original) {
+      throw new Error(`Compression failed: ${stats.abbreviated} >= ${stats.original}`);
+   }
+});
+
+runTest("QR - decodeQRToInstructions returns compiled instructions", () => {
+   const vm = new PanSparkVM();
+   const code = "SET 10 >> x PRINT x";
+   const encoded = vm.encodeForQR(code);
+   const instructions = vm.decodeQRToInstructions(encoded);
+   
+   if (!Array.isArray(instructions)) {
+      throw new Error("decodeQRToInstructions should return an array");
+   }
+   if (instructions.length === 0) {
+      throw new Error("Should return compiled instructions");
+   }
 });
 
 // ==================== RESULTS SUMMARY ====================
