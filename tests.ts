@@ -1963,7 +1963,10 @@ runTest("QR - Round-trip encode/decode", () => {
 
 runTest("QR - Execute decoded code", () => {
    const vm = new PanSparkVM();
-   const code = "SET 10 >> x SET 20 >> y MATH x + y >> sum PRINT sum";
+   const code = `SET 10 >> x
+SET 20 >> y
+MATH x + y >> sum
+PRINT sum`;
    const encoded = vm.encodeForQR(code);
    const decoded = vm.decodeFromQR(encoded);
    const instructions = vm.compile(decoded);

@@ -2,6 +2,25 @@
 
 All notable changes to PanSpark will be documented in this file.
 
+## [0.5.1] - 2025-11-09
+
+### Fixed
+
+- **Removed cursed single-liner workaround** - Simplified QR compression to respect language design
+- Removed opcode detection hack from `compressCode()`
+- Removed semicolon-to-newline conversion from `expandOpcodes()`
+- Enforced newline separation requirement consistently
+
+### Changed
+
+- `compressCode()` now simply cleans whitespace and removes comments
+- QR compression now requires properly formatted newline-separated code
+- Cleaner, simpler codebase without workarounds
+
+### Notes
+
+PanSpark requires all statements to be on separate lines - this is now enforced throughout the language consistently. No magic, no hacks.
+
 ## [0.5.0] - 2025-11-09
 
 ### Added

@@ -2625,46 +2625,17 @@ export class PanSparkVM {
     * Compress PanSpark code for QR encoding by removing comments and unnecessary whitespace
     */
    public compressCode(code: string): string {
-      // List of all valid opcodes
-      const opcodes = [
-        'SET', 'PRINT', 'MATH', 'IF', 'ELSE', 'ENDIF', 'JUMP', 'POINT', 'PROC', 'ENDPROC',
-        'CALL', 'RETURN', 'FOR', 'ENDFOR', 'BREAK', 'CONTINUE', 'TRY', 'CATCH', 'ENDTRY',
-        'THROW', 'LIST_CREATE', 'LIST_PUSH', 'LIST_POP', 'LIST_GET', 'LIST_SET', 'LIST_LENGTH',
-        'LIST_REVERSE', 'LIST_FIND', 'LIST_CONTAINS', 'LIST_REMOVE', 'LIST_SORT',
-        'STRUCT', 'STRUCTEND', 'STRUCT_GET', 'STRUCT_SET',
-        'INC', 'DEC', 'MEMSTATS', 'END', 'CONCAT', 'STRLEN', 'SUBSTR',
-        'TYPEOF', 'STR_UPPER', 'STR_LOWER', 'STR_TRIM', 'STR_REPLACE', 'STR_CONTAINS', 'STR_CHAR'
-      ];
-
-      // First, normalize the code by converting to tokens and detecting statement boundaries
-      const tokens = code.split(/\s+/).filter(t => t.length > 0);
-      const statements: string[] = [];
-      let currentStatement: string[] = [];
-
-      for (const token of tokens) {
-        if (opcodes.includes(token.toUpperCase()) && currentStatement.length > 0) {
-          // Found a new opcode, save the current statement
-          statements.push(currentStatement.join(' '));
-          currentStatement = [token];
-        } else {
-          currentStatement.push(token);
-        }
-      }
-
-      if (currentStatement.length > 0) {
-        statements.push(currentStatement.join(' '));
-      }
-
-      // Now process statements to remove comments and join with semicolon separators
-      return statements
-        .map(stmt => {
+      // Process line by line - enforce that code uses newlines to separate statements
+      return code
+        .split('\n')
+        .map(line => {
           // Remove inline comments
-          const commentIdx = stmt.indexOf('//');
-          const cleanStmt = commentIdx > -1 ? stmt.substring(0, commentIdx) : stmt;
-          return cleanStmt.trim();
+          const commentIdx = line.indexOf('//');
+          const cleanLine = commentIdx > -1 ? line.substring(0, commentIdx) : line;
+          return cleanLine.trim();
         })
-        .filter(stmt => stmt.length > 0)
-        .join(';');  // Use semicolon to separate statements
+        .filter(line => line.length > 0)
+        .join('\n');  // Preserve newlines - they are REQUIRED by the language
     }
 
    /**
@@ -2742,15 +2713,14 @@ export class PanSparkVM {
       let expanded = abbreviated;
       const sortedKeys = Object.keys(expansions).sort((a, b) => b.length - a.length);
 
-      for (const abbr of sortedKeys) {
-        const opcode = expansions[abbr];
-        const regex = new RegExp(`\\b${abbr}\\b`, 'g');
-        expanded = expanded.replace(regex, opcode);
-      }
+       for (const abbr of sortedKeys) {
+         const opcode = expansions[abbr];
+         const regex = new RegExp(`\\b${abbr}\\b`, 'g');
+         expanded = expanded.replace(regex, opcode);
+       }
 
-      // Convert semicolon separators back to newlines
-      return expanded.replace(/;/g, '\n');
-    }
+       return expanded;
+     }
 
    /**
     * Encode program code to QR-friendly format (base64)
