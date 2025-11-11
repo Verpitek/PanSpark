@@ -884,19 +884,14 @@ PROC checkGuess (secret, guess)
   IF guess > secret >> tooHigh
   PRINT "Too low!"
   RETURN 0
-  JUMP done
   
   POINT tooHigh
   PRINT "Too high!"
   RETURN 0
-  JUMP done
   
   POINT correct
   PRINT "Correct!"
   RETURN 1
-  
-  POINT done
-  RETURN 0
 ENDPROC
 
 SET 42 >> secretNumber
@@ -1152,7 +1147,7 @@ ENDFOR
 LIST_CREATE inventory
 SET 0 >> gold
 
-PROC addItem (itemId, quantity)
+PROC addItem (itemId)
   LIST_PUSH itemId >> inventory
 ENDPROC
 
