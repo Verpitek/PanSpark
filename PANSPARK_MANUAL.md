@@ -84,7 +84,7 @@ PRINT result
 3. `MATH` OpCode: Add them together and store in `result`
 4. `PRINT` OpCode: Display the `result` (which is `30`)
 
-> **ℹ️ INFO:** The `>>` symbol means "pipe this to" or "store in". It's the arrow that shows where data flows! Every line starts with an OpCode that describes what to do.
+> **INFO:** The `>>` symbol means "pipe this to" or "store in". It's the arrow that shows where data flows! Every line starts with an OpCode that describes what to do.
 
 ---
 
@@ -125,7 +125,7 @@ In PanSpark, variable names use camelCase (no underscores or dashes):
 - `playerHealth`, `enemyDamage` — Perfect!
 - `player_health` — Don't use underscores
 
-> **⚠️ CAUTION:** Don't start variable names with numbers: `player1Health` works, but `1playerHealth` doesn't.
+> **CAUTION:** Don't start variable names with numbers: `player1Health` works, but `1playerHealth` doesn't.
 
 ---
 
@@ -217,7 +217,7 @@ LIST_PUSH 3 >> numbers
 PRINT numbers
 ```
 
-> **ℹ️ INFO:** Each `PRINT` command outputs to a buffer on its own line. When your program finishes, you can read all outputs at once. That's how PanSpark displays things!
+> **INFO:** Each `PRINT` command outputs to a buffer on its own line. When your program finishes, you can read all outputs at once. That's how PanSpark displays things!
 
 ---
 
@@ -303,7 +303,7 @@ ENDFOR
 4
 ```
 
-> **ℹ️ INFO:** `FOR i 0 5` means "start at 0, count up to (but not including) 5". The variable `i` holds the current iteration number.
+> **INFO:** `FOR i 0 5` means "start at 0, count up to (but not including) 5". The variable `i` holds the current iteration number.
 
 ## Breaking and Continuing
 
@@ -342,7 +342,7 @@ PRINT counter
 - Loop counters
 - Health/mana bars
 
-> **⚠️ CAUTION:** `INC` and `DEC` only work with one variable at a time. For multiple increments, use `MATH counter + 5 >> counter` instead.
+> **CAUTION:** `INC` and `DEC` only work with one variable at a time. For multiple increments, use `MATH counter + 5 >> counter` instead.
 
 ---
 
@@ -392,7 +392,7 @@ CALL add (3, 7) >> result
 PRINT result
 ```
 
-> **ℹ️ INFO:** Procedures have their own memory space. Variables created inside don't affect the outside world.
+> **INFO:** Procedures have their own memory space. Variables created inside don't affect the outside world.
 
 ---
 
@@ -472,7 +472,7 @@ LIST_GET colorsCoded 0 >> redValue
 PRINT redValue
 ```
 
-> **⚠️ CAUTION:** List indices start at 0! The first element is at index 0, not 1.
+> **CAUTION:** List indices start at 0! The first element is at index 0, not 1.
 
 ---
 
@@ -611,7 +611,7 @@ CATCH
 ENDTRY
 ```
 
-> **ℹ️ INFO:** When an error happens inside a TRY block, it stores the error message in your variable and jumps to CATCH. No crash!
+> **INFO:** When an error happens inside a TRY block, it stores the error message in your variable and jumps to CATCH. No crash!
 
 ---
 
@@ -660,7 +660,7 @@ FREE bigTemp
 PRINT "Memory freed!"
 ```
 
-> **ℹ️ INFO:** `FREE` is optional on modern systems, but vital on old computers with limited memory (like actual C64s or embedded systems).
+> **INFO:** `FREE` is optional on modern systems, but vital on old computers with limited memory (like actual C64s or embedded systems).
 
 ---
 
@@ -712,13 +712,13 @@ WAIT 1000
 PRINT "Done waiting"
 ```
 
-> **ℹ️ INFO:** This is useful in timing-sensitive applications. One tick = one operation.
+> **INFO:** This is useful in timing-sensitive applications. One tick = one operation.
 
 ---
 
 # PAGE 18: BEST PRACTICES
 
-### ✅ DO:
+### DO:
 
 1. **Initialize before using:**
    ```panspark
@@ -749,7 +749,7 @@ PRINT "Done waiting"
    IF index < len >> valid
    ```
 
-### ❌ DON'T:
+### DON'T:
 
 1. **Use undefined variables:**
    ```panspark
@@ -1178,13 +1178,13 @@ CALL showInventory ()
 ### Welcome to the PanSpark Community
 
 You've now got the knowledge to:
-- ✅ Create variables and do math
-- ✅ Make decisions with IF statements
-- ✅ Loop and repeat
-- ✅ Build procedures with PROC
-- ✅ Handle errors gracefully
-- ✅ Manage memory
-- ✅ Debug when things go wrong
+- Create variables and do math
+- Make decisions with IF statements
+- Loop and repeat
+- Build procedures with PROC
+- Handle errors gracefully
+- Manage memory
+- Debug when things go wrong
 
 ### Remember:
 - **One operation per line** keeps things clear
