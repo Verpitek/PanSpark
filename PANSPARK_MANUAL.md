@@ -15,9 +15,32 @@ Welcome, fellow programmer! You've just loaded one of the most straightforward s
 PanSpark is a **tick-based interpreted OpCode scripting language** designed for predictable performance and ease of parsing. Think of it as giving a robot instructions—one command at a time, nice and clear.
 
 **Key Philosophy:**
-- **One operation per line** — No confusion, no hidden operations
+- **One operation per line** — Every line begins with an OpCode
 - **Perfect for learning** — Every command does exactly what it says
 - **Memory conscious** — You can manage memory if you need to
+
+## OpCodes - The Command System
+
+Every line of PanSpark code begins with an **OpCode** (Operation Code). An OpCode tells PanSpark what action to take:
+
+```panspark
+SET 10 >> x        // SET is the OpCode
+PRINT x            // PRINT is the OpCode
+MATH x + 5 >> y    // MATH is the OpCode
+IF x > 5 >> label  // IF is the OpCode
+```
+
+Common OpCodes include:
+- `SET` — Store a value in a variable
+- `PRINT` — Display output
+- `MATH` — Perform calculations
+- `IF` — Make a decision
+- `JUMP` — Go to a labeled point
+- `POINT` — Mark a location
+- `FOR` — Start a loop
+- `PROC` — Define a function
+
+Think of OpCodes as verbs that tell your program what to do. Each line must start with one!
 
 ## The Three Types We Work With
 
@@ -39,9 +62,12 @@ Let's start simple. Here's the tiniest PanSpark program:
 PRINT "Hello, World!"
 ```
 
+**Anatomy of this line:**
+- `PRINT` is the **OpCode** (the command)
+- `"Hello, World!"` is the argument (what to print)
+
 **What happens:**
-1. `PRINT` displays text and automatically adds a newline
-2. `"Hello, World!"` is the text to display
+1. The `PRINT` OpCode displays text and automatically adds a newline
 
 Let's try something with numbers:
 
@@ -52,13 +78,13 @@ MATH number1 + number2 >> result
 PRINT result
 ```
 
-**What happens:**
-1. Store `10` in `number1`
-2. Store `20` in `number2`
-3. Add them together and store in `result`
-4. Display the `result` (which is `30`)
+**Breaking it down - Each line has an OpCode:**
+1. `SET` OpCode: Store `10` in `number1`
+2. `SET` OpCode: Store `20` in `number2`
+3. `MATH` OpCode: Add them together and store in `result`
+4. `PRINT` OpCode: Display the `result` (which is `30`)
 
-> **ℹ️ INFO:** The `>>` symbol means "pipe this to" or "store in". It's the arrow that shows where data flows!
+> **ℹ️ INFO:** The `>>` symbol means "pipe this to" or "store in". It's the arrow that shows where data flows! Every line starts with an OpCode that describes what to do.
 
 ---
 
