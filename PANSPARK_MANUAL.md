@@ -38,7 +38,7 @@ Common OpCodes include:
 - `JUMP` — Go to a labeled point
 - `POINT` — Mark a location
 - `FOR` — Start a loop
-- `PROC` — Define a function
+- `PROC` — Define a procedure
 
 Think of OpCodes as verbs that tell your program what to do. Each line must start with one!
 
@@ -977,9 +977,9 @@ PRINT "Complete!"
 | FOR...ENDFOR | Count loop | `FOR i 0 10` |
 | INC | Add 1 | `INC counter` |
 | DEC | Subtract 1 | `DEC counter` |
-| PROC...ENDPROC | Define function | `PROC add (a, b)` |
-| CALL | Run function | `CALL add (3, 5) >> result` |
-| RETURN | Exit function | `RETURN result` |
+| PROC...ENDPROC | Define procedure | `PROC add (a, b)` |
+| CALL | Call procedure | `CALL add (3, 5) >> result` |
+| RETURN | Exit procedure | `RETURN result` |
 | LIST_CREATE | New list | `LIST_CREATE items` |
 | LIST_PUSH | Add to list | `LIST_PUSH 10 >> items` |
 | LIST_GET | Get from list | `LIST_GET items 0 >> first` |
@@ -1186,7 +1186,7 @@ You've now got the knowledge to:
 - ✅ Create variables and do math
 - ✅ Make decisions with IF statements
 - ✅ Loop and repeat
-- ✅ Build functions with PROC
+- ✅ Build procedures with PROC
 - ✅ Handle errors gracefully
 - ✅ Manage memory
 - ✅ Debug when things go wrong
