@@ -1,8 +1,0 @@
-# build directory
-/build/
-
-# Node.js modules
-/node_modules/
-
-# SvelteKit-specific files
-/.svelte-kit/
