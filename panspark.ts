@@ -1,5 +1,6 @@
 import { handleSet } from "./handlers/set";
 import { handlePrint } from "./handlers/print";
+import { handleAdd } from "./handlers/add";
 
 export enum OpCode {
   // basics
@@ -89,21 +90,32 @@ export class VM {
   public instructions: Instruction[] = [];
   private registerMemory: number[] = [];
   private machineMemory: number[] = [];
+  private activeLine = 0;
 
-  public touchRegister(id: number, data: number) {
-    this.registerMemory[id] = data;
+  public setMemory(data: number, dest: Argument) {
+    if (dest.type == ArgType.LITERAL) {
+      throw Error("memory destination cannot be a LITERAL");
+    }
+    if (dest.type == ArgType.REGISTER) {
+      this.registerMemory[dest.value] = data;
+    }
+    if (dest.type == ArgType.MEMORY) {
+      this.machineMemory[dest.value] = data;
+    }
   }
 
-  public touchMemory(id: number, data: number) {
-    this.machineMemory[id] = data;
-  }
-
-  public fetchRegister(id: number): number {
-    return this.registerMemory[id];
-  }
-
-  public fetchMemory(id: number): number {
-    return this.machineMemory[id];
+  public fetchMemory(arg: Argument): number {
+    if (arg.type == ArgType.LITERAL) {
+      throw Error("cannot fetch memory from a LITERAL");
+    }
+    if (arg.type == ArgType.REGISTER) {
+      return this.registerMemory[arg.value];
+    }
+    if (arg.type == ArgType.MEMORY) {
+      return this.machineMemory[arg.value];
+    } else {
+      return 0;
+    }
   }
 
   public *compile(code: string) {
@@ -330,6 +342,9 @@ export class VM {
           break;
         case OpCode.PRINT:
           handlePrint(this, parsedInstruction);
+          break;
+        case OpCode.ADD:
+          handleAdd(this, parsedInstruction);
           break;
         default:
           break;
