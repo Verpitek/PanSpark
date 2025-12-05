@@ -1,4 +1,4 @@
-import { Instruction, VM, ArgType } from "../panspark";
+import { Instruction, VM, ArgType } from "../../panspark";
 
 export function handleSet(vm: VM, instruction: Instruction): void {
   const data = instruction.arguments[0];
