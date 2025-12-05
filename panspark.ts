@@ -156,6 +156,7 @@ export class VM {
       } else {
         sanitizedCode.push(splitCode[line]);
       }
+      yield;
     }
     splitCode = sanitizedCode;
     let pointMemory: Map<string, number> = new Map();
@@ -163,9 +164,6 @@ export class VM {
     for (let line in splitCode) {
       const operation = splitCode[line].split(" ");
       const opcode = operation[0];
-      if (opcode == "" || opcode.startsWith("//")) {
-        continue;
-      }
       if (opcode == "POINT") {
         pointMemory[operation[1]] = line;
       }

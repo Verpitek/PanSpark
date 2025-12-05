@@ -41,8 +41,16 @@ POINT math_check
 PRINT 4444
 `;
 
+const code3 = `
+SET 0 >> r0
+POINT loop
+ADD r0 1 >> r0
+PRINT r0
+JUMP loop`;
+
 let vm = new VM();
 for (const instruction of vm.compile(code2)) {
+  console.log(instruction)
 }
 const gen = vm.run();
 let result = gen.next();
