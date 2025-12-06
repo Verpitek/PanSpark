@@ -133,7 +133,7 @@ export class VM {
       this.registerMemory[dest.value] = data;
     } else if (dest.type == ArgType.MEMORY) {
       if (dest.value >= this.machineMemoryLimit || dest.value < 0) {
-        throw Error("outside register memory bounds!");
+        throw Error("outside machine memory bounds!");
       }
       this.machineMemory[dest.value] = data;
     } else {
@@ -147,8 +147,14 @@ export class VM {
     if (arg.type == ArgType.LITERAL) {
       return arg.value;
     } else if (arg.type == ArgType.REGISTER) {
+      if (arg.value >= this.registerMemoryLimit || arg.value < 0) {
+        throw Error("outside register memory bounds!");
+      }
       return this.registerMemory[arg.value];
     } else if (arg.type == ArgType.MEMORY) {
+      if (arg.value >= this.machineMemoryLimit || arg.value < 0) {
+        throw Error("outside machine memory bounds!");
+      }
       return this.machineMemory[arg.value];
     } else {
       throw Error(
