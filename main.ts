@@ -43,17 +43,13 @@ PRINT 4444
 
 const code3 = `
 SET 0 >> r0
-POINT loop
-ADD r0 1 >> r0
-PRINT r0
-JUMP loop`;
+PRINT r0`;
 
 // create a new VM with memory bounds for register and machine memory
 let vm = new VM(16, 16);
 
 // compilation cycle
-for (const instruction of vm.compile(code2)) {
-  console.log(instruction)
+for (const instruction of vm.compile(code3)) {
 }
 
 // running cycle
