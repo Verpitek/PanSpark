@@ -48,10 +48,15 @@ ADD r0 1 >> r0
 PRINT r0
 JUMP loop`;
 
-let vm = new VM();
+// create a new VM with memory bounds for register and machine memory
+let vm = new VM(16, 16);
+
+// compilation cycle
 for (const instruction of vm.compile(code2)) {
   console.log(instruction)
 }
+
+// running cycle
 const gen = vm.run();
 let result = gen.next();
 while (!result.done) {

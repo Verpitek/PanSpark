@@ -110,8 +110,15 @@ export class VM {
   public instructions: Instruction[] = [];
   public activeInstructionPos: number = 0;
 
-  private registerMemory: number[] = [];
-  private machineMemory: number[] = [];
+  public registerMemoryLimit: number = 0;
+  public machineMemoryLimit: number = 0;
+  public registerMemory: number[] = [];
+  public machineMemory: number[] = [];
+
+  constructor(registerMemoryLimit: number, machineMemoryLimit: number) {
+    this.registerMemoryLimit = registerMemoryLimit;
+    this.machineMemoryLimit = machineMemoryLimit;
+  }
 
   public setMemory(data: number, dest: Argument) {
     if (dest.type == ArgType.LITERAL) {
@@ -120,8 +127,14 @@ export class VM {
           (this.activeInstructionPos + 1),
       );
     } else if (dest.type == ArgType.REGISTER) {
+      if (dest.value >= this.registerMemoryLimit || dest.value < 0) {
+        throw Error("outside register memory bounds!");
+      }
       this.registerMemory[dest.value] = data;
     } else if (dest.type == ArgType.MEMORY) {
+      if (dest.value >= this.machineMemoryLimit || dest.value < 0) {
+        throw Error("outside register memory bounds!");
+      }
       this.machineMemory[dest.value] = data;
     } else {
       throw Error(
@@ -207,21 +220,30 @@ export class VM {
         case "JUMP":
           instruction = buildInstruction(
             OpCode.JUMP,
-            splitCode[line].replace(splitCode[line].split(" ")[1], pointMemory[splitCode[line].split(" ")[1]]),
+            splitCode[line].replace(
+              splitCode[line].split(" ")[1],
+              pointMemory[splitCode[line].split(" ")[1]],
+            ),
             parseInt(line),
           );
           break;
         case "POINT":
           instruction = buildInstruction(
             OpCode.POINT,
-            splitCode[line].replace(splitCode[line].split(" ")[1], pointMemory[splitCode[line].split(" ")[1]]),
+            splitCode[line].replace(
+              splitCode[line].split(" ")[1],
+              pointMemory[splitCode[line].split(" ")[1]],
+            ),
             parseInt(line),
           );
           break;
         case "IF":
           instruction = buildInstruction(
             OpCode.IF,
-            splitCode[line].replace(splitCode[line].split(" ")[5], pointMemory[splitCode[line].split(" ")[5]]),
+            splitCode[line].replace(
+              splitCode[line].split(" ")[5],
+              pointMemory[splitCode[line].split(" ")[5]],
+            ),
             parseInt(line),
           );
           break;
