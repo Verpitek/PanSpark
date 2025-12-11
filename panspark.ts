@@ -120,6 +120,114 @@ export class VM {
     this.machineMemoryLimit = machineMemoryLimit;
   }
 
+  /**
+   * Saves the current VM state to a compact string format.
+   * Format: instructionPos|r0,r1,r2,...|x0,x1,x2,...|output0,output1,...|instructions(JSON)
+   * @returns Compressed state string
+   */
+  public saveState(): string {
+    // Save instruction pointer
+    const ipPart = this.activeInstructionPos.toString();
+
+    // Save register memory (omit trailing zeros for space efficiency)
+    const regPart = this.registerMemory
+      .slice(0, this.findLastNonZeroIndex(this.registerMemory) + 1)
+      .join(",");
+
+    // Save machine memory (omit trailing zeros for space efficiency)
+    const memPart = this.machineMemory
+      .slice(0, this.findLastNonZeroIndex(this.machineMemory) + 1)
+      .join(",");
+
+    // Save output buffer
+    const outputPart = this.outputBuffer.join(",");
+
+    // Save instructions (compiled code)
+    const instructionsPart = JSON.stringify(this.instructions);
+
+    return `${ipPart}|${regPart}|${memPart}|${outputPart}|${instructionsPart}`;
+  }
+
+  /**
+   * Restores the VM state from a savestate string.
+   * @param state Savestate string from saveState()
+   */
+  public loadState(state: string): void {
+    // Find the first 3 pipes to split the first 4 parts
+    let pipeCount = 0;
+    let splitIndex = 0;
+    for (let i = 0; i < state.length && pipeCount < 4; i++) {
+      if (state[i] === "|") {
+        pipeCount++;
+        if (pipeCount === 4) {
+          splitIndex = i;
+          break;
+        }
+      }
+    }
+
+    const parts = state.substring(0, splitIndex).split("|");
+    const instructionsJson = state.substring(splitIndex + 1);
+
+    if (parts.length < 4) {
+      throw Error("Invalid savestate format");
+    }
+
+    // Restore instruction pointer
+    this.activeInstructionPos = parseInt(parts[0]);
+
+    // Restore register memory
+    this.registerMemory = [];
+    if (parts[1]) {
+      const regValues = parts[1].split(",").map((v) => parseInt(v));
+      for (let i = 0; i < regValues.length; i++) {
+        this.registerMemory[i] = regValues[i];
+      }
+    }
+    // Fill remaining registers with 0
+    for (let i = this.registerMemory.length; i < this.registerMemoryLimit; i++) {
+      this.registerMemory[i] = 0;
+    }
+
+    // Restore machine memory
+    this.machineMemory = [];
+    if (parts[2]) {
+      const memValues = parts[2].split(",").map((v) => parseInt(v));
+      for (let i = 0; i < memValues.length; i++) {
+        this.machineMemory[i] = memValues[i];
+      }
+    }
+    // Fill remaining memory with 0
+    for (let i = this.machineMemory.length; i < this.machineMemoryLimit; i++) {
+      this.machineMemory[i] = 0;
+    }
+
+    // Restore output buffer
+    this.outputBuffer = [];
+    if (parts[3]) {
+      this.outputBuffer = parts[3].split(",").map((v) => parseInt(v));
+    }
+
+    // Restore instructions
+    if (instructionsJson) {
+      this.instructions = JSON.parse(instructionsJson);
+    }
+  }
+
+  /**
+   * Helper function to find the index of the last non-zero value in an array
+   * @param arr Array to search
+   * @returns Index of last non-zero, or -1 if all zeros
+   */
+  private findLastNonZeroIndex(arr: number[]): number {
+    for (let i = arr.length - 1; i >= 0; i--) {
+      if (arr[i] !== 0 && arr[i] !== undefined) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
   public setMemory(data: number, dest: Argument) {
     if (dest.type == ArgType.LITERAL) {
       throw Error(
