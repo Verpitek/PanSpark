@@ -49,6 +49,9 @@ export enum OpCode {
   NOP,
   HALT,
   UNTIL,
+
+  CALL,
+  RET,
 }
 
 export enum ArgType {
@@ -119,14 +122,16 @@ export class VM {
 
   public registerMemoryLimit: number = 0;
   public machineMemoryLimit: number = 0;
-  public registerMemory: number[] = new Array(this.registerMemoryLimit).fill(0);
-  public machineMemory: number[] = new Array(this.machineMemoryLimit).fill(9);
+  public registerMemory: number[] = [];
+  public machineMemory: number[] = [];
 
   public runFastFlag: boolean = false;
 
   constructor(registerMemoryLimit: number, machineMemoryLimit: number) {
     this.registerMemoryLimit = registerMemoryLimit;
     this.machineMemoryLimit = machineMemoryLimit;
+    this.registerMemory = new Array(this.registerMemoryLimit).fill(0);
+    this.machineMemory = new Array(this.machineMemoryLimit).fill(0);
   }
 
   /**

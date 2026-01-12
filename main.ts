@@ -1,20 +1,14 @@
 import { VM } from "./panspark";
 
-const code2 = `SET 0 >> r0
-POINT loop
-INC r0
+const code2 = `INC r0
 PRINT r0
-RNG 0 1000 >> r1
-PRINT r1
-IF r0 < 200000 >> loop
-
 `;
 
 const vm = new VM(8, 8);
 
 // --- Compile Benchmark ---
 const compileStart = performance.now();
-const instructions = Array.from(vm.compile(code2)); 
+const instructions = Array.from(vm.compile(code2));
 const compileEnd = performance.now();
 
 console.log(`Compilation Time: ${(compileEnd - compileStart).toFixed(4)}ms`);
@@ -29,7 +23,6 @@ let result = gen.next();
 
 while (!result.done) {
   if (vm.outputBuffer.length > 0) {
-   console.log(vm.outputBuffer); 
   }
   result = gen.next();
 }
