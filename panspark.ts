@@ -112,8 +112,8 @@ export class VM {
 
   public registerMemoryLimit: number = 0;
   public machineMemoryLimit: number = 0;
-  public registerMemory: number[] = [];
-  public machineMemory: number[] = [];
+  public registerMemory: number[] = new Array(this.registerMemoryLimit).fill(0);
+  public machineMemory: number[] = new Array(this.machineMemoryLimit).fill(9);
 
   constructor(registerMemoryLimit: number, machineMemoryLimit: number) {
     this.registerMemoryLimit = registerMemoryLimit;
@@ -283,7 +283,6 @@ export class VM {
       } else {
         sanitizedCode.push(splitCode[line]);
       }
-      yield;
     }
     splitCode = sanitizedCode;
     let pointMemory: Map<string, number> = new Map();
@@ -294,7 +293,6 @@ export class VM {
       if (opcode == "POINT") {
         pointMemory[operation[1]] = line;
       }
-      yield;
     }
     // third pass: compilation
     for (let line in splitCode) {
