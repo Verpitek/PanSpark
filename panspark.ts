@@ -15,6 +15,9 @@ import {
   handleMod,
   handlePow,
   handleSqrt,
+  handleInc,
+  handleDec,
+  handleRng,
 } from "./handlers/arithmetics";
 
 export enum OpCode {
@@ -38,10 +41,14 @@ export enum OpCode {
   ABS,
   MIN,
   MAX,
+  INC,
+  DEC,
+  RNG,
 
   // utility
   NOP,
   HALT,
+  UNTIL,
 }
 
 export enum ArgType {
@@ -115,6 +122,8 @@ export class VM {
   public registerMemory: number[] = new Array(this.registerMemoryLimit).fill(0);
   public machineMemory: number[] = new Array(this.machineMemoryLimit).fill(9);
 
+  public runFastFlag: boolean = false;
+
   constructor(registerMemoryLimit: number, machineMemoryLimit: number) {
     this.registerMemoryLimit = registerMemoryLimit;
     this.machineMemoryLimit = machineMemoryLimit;
@@ -185,7 +194,11 @@ export class VM {
       }
     }
     // Fill remaining registers with 0
-    for (let i = this.registerMemory.length; i < this.registerMemoryLimit; i++) {
+    for (
+      let i = this.registerMemory.length;
+      i < this.registerMemoryLimit;
+      i++
+    ) {
       this.registerMemory[i] = 0;
     }
 
@@ -417,6 +430,27 @@ export class VM {
             parseInt(line),
           );
           break;
+        case "INC":
+          instruction = buildInstruction(
+            OpCode.INC,
+            splitCode[line],
+            parseInt(line),
+          );
+          break;
+        case "DEC":
+          instruction = buildInstruction(
+            OpCode.DEC,
+            splitCode[line],
+            parseInt(line),
+          );
+          break;
+        case "RNG":
+          instruction = buildInstruction(
+            OpCode.RNG,
+            splitCode[line],
+            parseInt(line),
+          );
+          break;
 
         // Utility
         case "NOP":
@@ -429,6 +463,13 @@ export class VM {
         case "HALT":
           instruction = buildInstruction(
             OpCode.HALT,
+            splitCode[line],
+            parseInt(line),
+          );
+          break;
+        case "UNTIL":
+          instruction = buildInstruction(
+            OpCode.UNTIL,
             splitCode[line],
             parseInt(line),
           );
@@ -468,8 +509,8 @@ export class VM {
         case OpCode.POINT:
           break;
         case OpCode.IF:
-          const condition = handleIf(this, parsedInstruction);
-          if (condition == true) {
+          const ifCondition = handleIf(this, parsedInstruction);
+          if (ifCondition == true) {
             this.activeInstructionPos = parsedInstruction.arguments[3].value;
             instructionPointerModified = true;
           }
@@ -502,10 +543,27 @@ export class VM {
         case OpCode.MAX:
           handleMax(this, parsedInstruction);
           break;
+        case OpCode.INC:
+          handleInc(this, parsedInstruction);
+          break;
+        case OpCode.DEC:
+          handleDec(this, parsedInstruction);
+          break;
+        case OpCode.RNG:
+          handleRng(this, parsedInstruction);
+          break;
+        case OpCode.UNTIL:
+          const untilCondition = handleIf(this, parsedInstruction);
+          if (untilCondition != true) {
+            instructionPointerModified = true;
+          }
+          break;
         default:
           throw Error("Unknown OpCode: " + parsedInstruction.operation);
       }
-      yield;
+      if (!this.runFastFlag) {
+        yield;
+      }
       if (!instructionPointerModified) {
         this.activeInstructionPos++;
       }

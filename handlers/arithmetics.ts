@@ -42,9 +42,9 @@ export function handleAbs(vm: VM, instruction: Instruction): void {
 
 export function handleMin(vm: VM, instruction: Instruction): void {
   const arg1 = instruction.arguments[0];
-  const arg1Data = vm.fetchMemory(arg1)
+  const arg1Data = vm.fetchMemory(arg1);
   const arg2 = instruction.arguments[1];
-  const arg2Data = vm.fetchMemory(arg2)
+  const arg2Data = vm.fetchMemory(arg2);
   const result = instruction.arguments[2];
   if (arg1Data < arg2Data) {
     vm.setMemory(arg1Data, result);
@@ -55,13 +55,41 @@ export function handleMin(vm: VM, instruction: Instruction): void {
 
 export function handleMax(vm: VM, instruction: Instruction): void {
   const arg1 = instruction.arguments[0];
-  const arg1Data = vm.fetchMemory(arg1)
+  const arg1Data = vm.fetchMemory(arg1);
   const arg2 = instruction.arguments[1];
-  const arg2Data = vm.fetchMemory(arg2)
+  const arg2Data = vm.fetchMemory(arg2);
   const result = instruction.arguments[2];
   if (arg1Data > arg2Data) {
     vm.setMemory(arg1Data, result);
   } else {
     vm.setMemory(arg2Data, result);
   }
+}
+
+export function handleInc(vm: VM, instruction: Instruction): void {
+  const arg1 = instruction.arguments[0];
+  const arg1Data = vm.fetchMemory(arg1);
+  vm.setMemory(arg1Data+1, arg1);
+}
+
+export function handleDec(vm: VM, instruction: Instruction): void {
+  const arg1 = instruction.arguments[0];
+  const arg1Data = vm.fetchMemory(arg1);
+  vm.setMemory(arg1Data-1, arg1);
+}
+
+export function handleDec(vm: VM, instruction: Instruction): void {
+  const arg1 = instruction.arguments[0];
+  const arg1Data = vm.fetchMemory(arg1);
+  vm.setMemory(arg1Data-1, arg1);
+}
+
+export function handleRng(vm: VM, instruction: Instruction): void {
+  const start = vm.fetchMemory(instruction.arguments[0]);
+  const stop = vm.fetchMemory(instruction.arguments[1]);
+  const resultRef = instruction.arguments[2];
+  const min = Math.min(start, stop);
+  const max = Math.max(start, stop);
+  const generatedValue = Math.floor(Math.random() * (max - min + 1)) + min;
+  vm.setMemory(generatedValue, resultRef);
 }
