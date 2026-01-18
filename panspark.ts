@@ -49,9 +49,8 @@ export enum OpCode {
   NOP,
   HALT,
   UNTIL,
-
-  CALL,
-  RET,
+  CALL, // not implemented
+  RET, // not implemented
 }
 
 export enum ArgType {
@@ -65,6 +64,7 @@ export enum ArgType {
   LESSEQUAL = 7,
   GREATEQUAL = 8,
   LABEL = 9,
+  HEAP = 10,
 }
 
 export interface Argument {
@@ -118,18 +118,25 @@ function buildInstruction(
 export class VM {
   public outputBuffer: number[] = [];
   public instructions: Instruction[] = [];
+  public callStack: number[] = [];
   public activeInstructionPos: number = 0;
 
   public registerMemoryLimit: number = 0;
   public machineMemoryLimit: number = 0;
+  public callStackLimit: number = 0;
   public registerMemory: number[] = [];
   public machineMemory: number[] = [];
 
   public runFastFlag: boolean = false;
 
-  constructor(registerMemoryLimit: number, machineMemoryLimit: number) {
+  constructor(
+    registerMemoryLimit: number,
+    machineMemoryLimit: number,
+    callStackLimit: number,
+  ) {
     this.registerMemoryLimit = registerMemoryLimit;
     this.machineMemoryLimit = machineMemoryLimit;
+    this.callStackLimit = callStackLimit;
     this.registerMemory = new Array(this.registerMemoryLimit).fill(0);
     this.machineMemory = new Array(this.machineMemoryLimit).fill(0);
   }
@@ -153,13 +160,15 @@ export class VM {
       .slice(0, this.findLastNonZeroIndex(this.machineMemory) + 1)
       .join(",");
 
+    const callPart = this.callStack.join(",");
+
     // Save output buffer
     const outputPart = this.outputBuffer.join(",");
 
     // Save instructions (compiled code)
     const instructionsPart = JSON.stringify(this.instructions);
 
-    return `${ipPart}|${regPart}|${memPart}|${outputPart}|${instructionsPart}`;
+    return `${ipPart}|${regPart}|${memPart}|${callPart}|${outputPart}|${instructionsPart}`;
   }
 
   /**
@@ -170,10 +179,10 @@ export class VM {
     // Find the first 3 pipes to split the first 4 parts
     let pipeCount = 0;
     let splitIndex = 0;
-    for (let i = 0; i < state.length && pipeCount < 4; i++) {
+    for (let i = 0; i < state.length && pipeCount < 5; i++) {
       if (state[i] === "|") {
         pipeCount++;
-        if (pipeCount === 4) {
+        if (pipeCount === 5) {
           splitIndex = i;
           break;
         }
@@ -220,10 +229,18 @@ export class VM {
       this.machineMemory[i] = 0;
     }
 
+    this.callStack = [];
+    if (parts[3]) {
+      const calValues = parts[3].split(",").map((v) => parseInt(v));
+      for (let i = 0; i < calValues.length; i++) {
+        this.callStack[i] = calValues[i];
+      }
+    }
+
     // Restore output buffer
     this.outputBuffer = [];
-    if (parts[3]) {
-      this.outputBuffer = parts[3].split(",").map((v) => parseInt(v));
+    if (parts[4]) {
+      this.outputBuffer = parts[4].split(",").map((v) => parseInt(v));
     }
 
     // Restore instructions
@@ -288,6 +305,20 @@ export class VM {
           (this.activeInstructionPos + 1),
       );
     }
+  }
+
+  public pushCallStack(returnAddr: number) {
+    if (this.callStack.length >= this.callStackLimit) {
+      throw Error("Stack overflow! Too many nested calls.");
+    }
+    this.callStack.push(returnAddr);
+  }
+
+  public popCallStack(): number {
+    if (this.callStack.length === 0) {
+      throw Error("Stack underflow!");
+    }
+    return this.callStack.pop()!;
   }
 
   public *compile(code: string) {
@@ -479,7 +510,23 @@ export class VM {
             parseInt(line),
           );
           break;
-
+        case "CALL":
+          instruction = buildInstruction(
+            OpCode.CALL,
+            splitCode[line].replace(
+              splitCode[line].split(" ")[1],
+              pointMemory[splitCode[line].split(" ")[1]],
+            ),
+            parseInt(line),
+          );
+          break;
+        case "RET":
+          instruction = buildInstruction(
+            OpCode.RET,
+            splitCode[line],
+            parseInt(line),
+          );
+          break;
         default:
           console.log("unknown OpCode: " + opcode);
           continue;
@@ -562,6 +609,15 @@ export class VM {
           if (untilCondition != true) {
             instructionPointerModified = true;
           }
+          break;
+        case OpCode.CALL:
+          this.pushCallStack(this.activeInstructionPos + 1);
+          this.activeInstructionPos = parsedInstruction.arguments[0].value;
+          instructionPointerModified = true;
+          break;
+        case OpCode.RET:
+          this.activeInstructionPos = this.popCallStack();
+          instructionPointerModified = true;
           break;
         default:
           throw Error("Unknown OpCode: " + parsedInstruction.operation);
