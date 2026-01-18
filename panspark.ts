@@ -326,6 +326,7 @@ export class VM {
     let sanitizedCode: string[] = [];
     // first pass: sanitization
     for (let line in splitCode) {
+      splitCode[line] = splitCode[line].trimStart()
       const opcode = splitCode[line].split(" ")[0];
       if (opcode == "" || opcode.startsWith("//")) {
         continue;

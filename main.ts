@@ -2,40 +2,40 @@ import { VM } from "./panspark";
 
 const code2 = `
 POINT main
-SET 1 >> r0
-PRINT r0
-CALL test_simple
-SET 2 >> r0
-PRINT r0
-CALL test_recursive
-SET 3 >> r0
-PRINT r0
-SET 999 >> r0
-PRINT r0
-HALT
+  SET 1 >> r0
+  PRINT r0
+  CALL test_simple
+  SET 2 >> r0
+  PRINT r0
+  CALL test_recursive
+  SET 3 >> r0
+  PRINT r0
+  SET 999 >> r0
+  PRINT r0
+  HALT
 
 POINT test_simple
-SET 100 >> r0
-PRINT r0
-RET
+  SET 100 >> r0
+  PRINT r0
+  RET
 
 POINT test_recursive
-SET 5 >> r0
-CALL countdown
-SET 200 >> r0
-PRINT r0
-SET 300 >> r0
-PRINT r0
-RET
+  SET 5 >> r0
+  CALL countdown
+  SET 200 >> r0
+  PRINT r0
+  SET 300 >> r0
+  PRINT r0
+  RET
 
 POINT countdown
-PRINT r0
-IF r0 == 0 >> countdown_done
-DEC r0
-CALL countdown
-JUMP countdown_done
-POINT countdown_done
-RET
+  PRINT r0
+  IF r0 == 0 >> countdown_done
+  DEC r0
+  CALL countdown
+  JUMP countdown_done
+    POINT countdown_done
+    RET
 `;
 
 const vm = new VM(8, 8, 8);
