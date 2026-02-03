@@ -42,7 +42,7 @@ const code3 = `
 SET 32767 >> r0
 PRINT r0`;
 
-const vm = new VM(16, 16, 256);
+const vm = new VM(16, 16, 256, 1024);
 
 // --- Compile Benchmark ---
 const compileStart = performance.now();
@@ -61,18 +61,45 @@ let result = gen.next();
 
 for (let i = 0; i < 10; i++) {
   if (vm.outputBuffer.length > 0) {
-    console.log(vm.outputBuffer)
+    console.log(vm.outputBuffer);
   }
   result = gen.next();
 }
+
+// Test RAM save/load
+console.log("\n=== Testing RAM Save/Load ===");
+// Write some test values to RAM
+vm.ram[0] = 123;
+vm.ram[1] = 456;
+vm.ram[10] = 789;
+vm.ram[100] = 999;
+console.log("Original RAM values:");
+console.log("RAM[0] =", vm.ram[0]);
+console.log("RAM[1] =", vm.ram[1]);
+console.log("RAM[10] =", vm.ram[10]);
+console.log("RAM[100] =", vm.ram[100]);
+
 const saveState = vm.saveState();
-const vm2 = new VM(16, 16, 256);
+console.log("\nSaveState string (first 200 chars):", saveState.substring(0, 200) + "...");
+const vm2 = new VM(16, 16, 256, 1024);
 vm2.loadState(saveState);
+
+// Verify RAM was restored
+console.log("\nRestored RAM values:");
+console.log("RAM[0] =", vm2.ram[0]);
+console.log("RAM[1] =", vm2.ram[1]);
+console.log("RAM[10] =", vm2.ram[10]);
+console.log("RAM[100] =", vm2.ram[100]);
+
+// Verify RAM matches original
+const ramMatch = vm2.ram[0] === 123 && vm2.ram[1] === 456 && vm2.ram[10] === 789 && vm2.ram[100] === 999;
+console.log("RAM restoration successful:", ramMatch);
+
 const gen2 = vm2.run();
 let result2 = gen2.next();
 while (!result2.done) {
   if (vm2.outputBuffer.length > 0) {
-    console.log(vm2.outputBuffer)
+    console.log(vm2.outputBuffer);
   }
   result2 = gen2.next();
 }
@@ -80,4 +107,3 @@ const runEnd = performance.now();
 
 console.log("Final Register State:", vm2.registerMemory);
 console.log(`Runtime Execution: ${(runEnd - runStart).toFixed(4)}ms`);
-

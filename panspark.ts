@@ -66,7 +66,6 @@ export enum ArgType {
   LESSEQUAL = 7,
   GREATEQUAL = 8,
   LABEL = 9,
-  HEAP = 10,
 }
 
 export interface Argument {
@@ -127,8 +126,10 @@ export class VM {
   public registerMemoryLimit: number = 0;
   public machineMemoryLimit: number = 0;
   public callStackLimit: number = 0;
+  public ramLimit: number = 0;
   public registerMemory: Int16Array;
   public machineMemory: Int16Array;
+  public ram: Int16Array;
 
   public runFastFlag: boolean = false;
 
@@ -136,19 +137,22 @@ export class VM {
     registerMemoryLimit: number,
     machineMemoryLimit: number,
     callStackLimit: number,
+    ramLimit: number,
   ) {
     this.registerMemoryLimit = registerMemoryLimit;
     this.machineMemoryLimit = machineMemoryLimit;
     this.callStackLimit = callStackLimit;
+    this.ramLimit = ramLimit;
     this.registerMemory = new Int16Array(this.registerMemoryLimit).fill(0);
     this.machineMemory = new Int16Array(this.machineMemoryLimit).fill(0);
     this.callStack = new Int16Array(this.callStackLimit).fill(0);
+    this.ram = new Int16Array(this.ramLimit).fill(0);
     this.stackPointer = 0;
   }
 
   /**
    * Saves the current VM state to a compact string format.
-   * Format: instructionPos|r0,r1,r2,...|x0,x1,x2,...|output0,output1,...|instructions(JSON)
+    * Format: instructionPos|r0,r1,r2,...|x0,x1,x2,...|callStack|output0,output1,...|ram|instructions(JSON)
    * @returns Compressed state string
    */
   public saveState(): string {
@@ -164,17 +168,21 @@ export class VM {
     const memPart = this.machineMemory
       .slice(0, this.findLastNonZeroIndex(this.machineMemory) + 1)
       .join(",");
-    
 
     const callPart = this.callStack.slice(0, this.stackPointer).join(",");
 
     // Save output buffer
     const outputPart = this.outputBuffer.join(",");
 
+    // Save RAM (omit trailing zeros for space efficiency)
+    const ramPart = this.ram
+      .slice(0, this.findLastNonZeroIndex(this.ram) + 1)
+      .join(",");
+
     // Save instructions (compiled code)
     const instructionsPart = JSON.stringify(this.instructions);
 
-    return `${ipPart}|${regPart}|${memPart}|${callPart}|${outputPart}|${instructionsPart}`;
+    return `${ipPart}|${regPart}|${memPart}|${callPart}|${outputPart}|${ramPart}|${instructionsPart}`;
   }
 
   /**
@@ -182,13 +190,13 @@ export class VM {
    * @param state Savestate string from saveState()
    */
   public loadState(state: string): void {
-    // Find the first 3 pipes to split the first 4 parts
+    // Find pipes to split parts (6 pipes total)
     let pipeCount = 0;
     let splitIndex = 0;
-    for (let i = 0; i < state.length && pipeCount < 5; i++) {
+    for (let i = 0; i < state.length && pipeCount < 6; i++) {
       if (state[i] === "|") {
         pipeCount++;
-        if (pipeCount === 5) {
+        if (pipeCount === 6) {
           splitIndex = i;
           break;
         }
@@ -198,7 +206,7 @@ export class VM {
     const parts = state.substring(0, splitIndex).split("|");
     const instructionsJson = state.substring(splitIndex + 1);
 
-    if (parts.length < 4) {
+    if (parts.length < 6) {
       throw Error("Invalid savestate format");
     }
 
@@ -249,6 +257,19 @@ export class VM {
     this.outputBuffer = [];
     if (parts[4]) {
       this.outputBuffer = parts[4].split(",").map((v) => parseInt(v));
+    }
+
+    // Restore RAM
+    this.ram.fill(0);
+    if (parts[5]) {
+      const ramValues = parts[5].split(",").map((v) => parseInt(v));
+      for (let i = 0; i < ramValues.length; i++) {
+        this.ram[i] = ramValues[i];
+      }
+    }
+    // Fill remaining RAM with 0
+    for (let i = this.ram.length; i < this.ramLimit; i++) {
+      this.ram[i] = 0;
     }
 
     // Restore instructions
@@ -315,24 +336,24 @@ export class VM {
   }
 
   public pushCallStack(returnAddr: number) {
-      // FIX: Use manual check instead of array.length (which is fixed in Int16)
-      if (this.stackPointer >= this.callStackLimit) {
-        throw Error("Stack overflow! Too many nested calls.");
-      }
-      // FIX: Manual assignment
-      this.callStack[this.stackPointer] = returnAddr;
-      this.stackPointer++;
+    // FIX: Use manual check instead of array.length (which is fixed in Int16)
+    if (this.stackPointer >= this.callStackLimit) {
+      throw Error("Stack overflow! Too many nested calls.");
     }
-  
-    public popCallStack(): number {
-      // FIX: Use manual check
-      if (this.stackPointer <= 0) {
-        throw Error("Stack underflow!");
-      }
-      // FIX: Manual decrement and return
-      this.stackPointer--;
-      return this.callStack[this.stackPointer];
+    // FIX: Manual assignment
+    this.callStack[this.stackPointer] = returnAddr;
+    this.stackPointer++;
+  }
+
+  public popCallStack(): number {
+    // FIX: Use manual check
+    if (this.stackPointer <= 0) {
+      throw Error("Stack underflow!");
     }
+    // FIX: Manual decrement and return
+    this.stackPointer--;
+    return this.callStack[this.stackPointer];
+  }
 
   public *compile(code: string) {
     let splitCode = code.split("\n");
