@@ -16,7 +16,7 @@ A lightweight 16-bit virtual machine with an assembly-like language, designed fo
 ## Getting Started
 
 ### Prerequisites
-- [Bun](https://bun.sh) (JavaScript runtime)
+- [Bun](https://bun.sh) (JavaScript runtime) or basically anything that runs javascript :P
 
 ### Installation
 ```bash
