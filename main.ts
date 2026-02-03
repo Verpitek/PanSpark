@@ -38,7 +38,11 @@ POINT countdown
     RET
 `;
 
-const vm = new VM(8, 8, 8);
+const code3 = `
+SET 32767 >> r0
+PRINT r0`;
+
+const vm = new VM(16, 16, 256);
 
 // --- Compile Benchmark ---
 const compileStart = performance.now();
@@ -62,7 +66,7 @@ for (let i = 0; i < 10; i++) {
   result = gen.next();
 }
 const saveState = vm.saveState();
-const vm2 = new VM(8, 8, 8);
+const vm2 = new VM(16, 16, 256);
 vm2.loadState(saveState);
 const gen2 = vm2.run();
 let result2 = gen2.next();

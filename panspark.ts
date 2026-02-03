@@ -26,6 +26,8 @@ export enum OpCode {
   ADD,
   SUB,
   PRINT,
+  LOAD,
+  STORE,
 
   // control flow
   JUMP,
@@ -49,8 +51,8 @@ export enum OpCode {
   NOP,
   HALT,
   UNTIL,
-  CALL, // not implemented
-  RET, // not implemented
+  CALL,
+  RET,
 }
 
 export enum ArgType {
@@ -118,14 +120,15 @@ function buildInstruction(
 export class VM {
   public outputBuffer: number[] = [];
   public instructions: Instruction[] = [];
-  public callStack: number[] = [];
+  public callStack: Int16Array;
+  public stackPointer: number = 0;
   public activeInstructionPos: number = 0;
 
   public registerMemoryLimit: number = 0;
   public machineMemoryLimit: number = 0;
   public callStackLimit: number = 0;
-  public registerMemory: number[] = [];
-  public machineMemory: number[] = [];
+  public registerMemory: Int16Array;
+  public machineMemory: Int16Array;
 
   public runFastFlag: boolean = false;
 
@@ -137,8 +140,10 @@ export class VM {
     this.registerMemoryLimit = registerMemoryLimit;
     this.machineMemoryLimit = machineMemoryLimit;
     this.callStackLimit = callStackLimit;
-    this.registerMemory = new Array(this.registerMemoryLimit).fill(0);
-    this.machineMemory = new Array(this.machineMemoryLimit).fill(0);
+    this.registerMemory = new Int16Array(this.registerMemoryLimit).fill(0);
+    this.machineMemory = new Int16Array(this.machineMemoryLimit).fill(0);
+    this.callStack = new Int16Array(this.callStackLimit).fill(0);
+    this.stackPointer = 0;
   }
 
   /**
@@ -159,8 +164,9 @@ export class VM {
     const memPart = this.machineMemory
       .slice(0, this.findLastNonZeroIndex(this.machineMemory) + 1)
       .join(",");
+    
 
-    const callPart = this.callStack.join(",");
+    const callPart = this.callStack.slice(0, this.stackPointer).join(",");
 
     // Save output buffer
     const outputPart = this.outputBuffer.join(",");
@@ -200,7 +206,7 @@ export class VM {
     this.activeInstructionPos = parseInt(parts[0]);
 
     // Restore register memory
-    this.registerMemory = [];
+    this.registerMemory.fill(0);
     if (parts[1]) {
       const regValues = parts[1].split(",").map((v) => parseInt(v));
       for (let i = 0; i < regValues.length; i++) {
@@ -217,7 +223,7 @@ export class VM {
     }
 
     // Restore machine memory
-    this.machineMemory = [];
+    this.machineMemory.fill(0);
     if (parts[2]) {
       const memValues = parts[2].split(",").map((v) => parseInt(v));
       for (let i = 0; i < memValues.length; i++) {
@@ -229,9 +235,11 @@ export class VM {
       this.machineMemory[i] = 0;
     }
 
-    this.callStack = [];
-    if (parts[3]) {
+    this.callStack.fill(0);
+    this.stackPointer = 0;
+    if (parts[3] && parts[3] !== "") {
       const calValues = parts[3].split(",").map((v) => parseInt(v));
+      this.stackPointer = calValues.length;
       for (let i = 0; i < calValues.length; i++) {
         this.callStack[i] = calValues[i];
       }
@@ -250,11 +258,10 @@ export class VM {
   }
 
   /**
-   * Helper function to find the index of the last non-zero value in an array
-   * @param arr Array to search
-   * @returns Index of last non-zero, or -1 if all zeros
+   * Helper function to find the index of the last non-zero value
+   * FIX: Added Int16Array to the type definition
    */
-  private findLastNonZeroIndex(arr: number[]): number {
+  private findLastNonZeroIndex(arr: number[] | Int16Array): number {
     for (let i = arr.length - 1; i >= 0; i--) {
       if (arr[i] !== 0 && arr[i] !== undefined) {
         return i;
@@ -308,25 +315,31 @@ export class VM {
   }
 
   public pushCallStack(returnAddr: number) {
-    if (this.callStack.length >= this.callStackLimit) {
-      throw Error("Stack overflow! Too many nested calls.");
+      // FIX: Use manual check instead of array.length (which is fixed in Int16)
+      if (this.stackPointer >= this.callStackLimit) {
+        throw Error("Stack overflow! Too many nested calls.");
+      }
+      // FIX: Manual assignment
+      this.callStack[this.stackPointer] = returnAddr;
+      this.stackPointer++;
     }
-    this.callStack.push(returnAddr);
-  }
-
-  public popCallStack(): number {
-    if (this.callStack.length === 0) {
-      throw Error("Stack underflow!");
+  
+    public popCallStack(): number {
+      // FIX: Use manual check
+      if (this.stackPointer <= 0) {
+        throw Error("Stack underflow!");
+      }
+      // FIX: Manual decrement and return
+      this.stackPointer--;
+      return this.callStack[this.stackPointer];
     }
-    return this.callStack.pop()!;
-  }
 
   public *compile(code: string) {
     let splitCode = code.split("\n");
     let sanitizedCode: string[] = [];
     // first pass: sanitization
     for (let line in splitCode) {
-      splitCode[line] = splitCode[line].trimStart()
+      splitCode[line] = splitCode[line].trimStart();
       const opcode = splitCode[line].split(" ")[0];
       if (opcode == "" || opcode.startsWith("//")) {
         continue;
