@@ -206,7 +206,7 @@ vm.ram[0] = 123;
 const value = vm.ram[1];
 
 // Access registers and machine memory via API
-vm.setMemory(67, { type: ArgType.REGISTER, value: 0 }); // r0 = 42
+vm.setMemory(67, { type: ArgType.REGISTER, value: 0 }); // r0 = 67
 const regValue = vm.fetchMemory({ type: ArgType.REGISTER, value: 0 });
 ```
 
