@@ -422,8 +422,7 @@ export class VM {
           if (this.peripherals.has(opcode)) {
             instruction = buildInstruction(OpCode.PERIPHERAL, toks, i, opcode);
           } else {
-            console.warn(`Unknown OpCode "${opcode}" at line ${i} — skipped`);
-            continue;
+            throw Error(`Unknown OpCode "${opcode}" at line ${i}`);
           }
       }
 

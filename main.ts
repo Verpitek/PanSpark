@@ -1,20 +1,15 @@
 import { VM } from "./panspark";
 
 const code = `
-  $counter = auto
-  $result  = auto
-  
-  POINT main
-    SET 10 >> $counter
-    SET 0  >> $result
-  
-  POINT loop
-    ADD $result $counter >> $result
-    DEC $counter
-    IF $counter > 0 >> loop
-  
-    PRINT $result
-    HALT
+$counter = r0
+$limit = r1
+
+SET 10 >> $limit
+
+POINT loop
+PRINT $counter
+INC $counter
+IF $limit > $counter >> loop
 `;
 
 const vm = new VM(8, 8, 1280);
