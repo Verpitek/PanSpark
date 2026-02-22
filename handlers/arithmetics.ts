@@ -1,95 +1,67 @@
 import { Instruction, VM } from "../panspark";
 
 export function handleMul(vm: VM, instruction: Instruction): void {
-  const arg1 = instruction.arguments[0];
-  const arg2 = instruction.arguments[1];
-  const result = instruction.arguments[2];
-  vm.setMemory(vm.fetchMemory(arg1) * vm.fetchMemory(arg2), result);
+  vm.setMemory(
+    vm.fetchMemory(instruction.arguments[0]) * vm.fetchMemory(instruction.arguments[1]),
+    instruction.arguments[2],
+  );
 }
 
 export function handleDiv(vm: VM, instruction: Instruction): void {
-  const arg1 = instruction.arguments[0];
-  const arg2 = instruction.arguments[1];
-  const result = instruction.arguments[2];
-  vm.setMemory(vm.fetchMemory(arg1) / vm.fetchMemory(arg2), result);
+  const divisor = vm.fetchMemory(instruction.arguments[1]);
+  if (divisor === 0) throw Error(`Division by zero at line: ${vm.activeInstructionPos + 1}`);
+  vm.setMemory(vm.fetchMemory(instruction.arguments[0]) / divisor, instruction.arguments[2]);
 }
 
 export function handleMod(vm: VM, instruction: Instruction): void {
-  const arg1 = instruction.arguments[0];
-  const arg2 = instruction.arguments[1];
-  const result = instruction.arguments[2];
-  vm.setMemory(vm.fetchMemory(arg1) % vm.fetchMemory(arg2), result);
+  const divisor = vm.fetchMemory(instruction.arguments[1]);
+  if (divisor === 0) throw Error(`Modulo by zero at line: ${vm.activeInstructionPos + 1}`);
+  vm.setMemory(vm.fetchMemory(instruction.arguments[0]) % divisor, instruction.arguments[2]);
 }
 
 export function handleSqrt(vm: VM, instruction: Instruction): void {
-  const arg1 = instruction.arguments[0];
-  const result = instruction.arguments[1];
-  vm.setMemory(Math.sqrt(vm.fetchMemory(arg1)), result);
+  vm.setMemory(Math.sqrt(vm.fetchMemory(instruction.arguments[0])), instruction.arguments[1]);
 }
 
 export function handlePow(vm: VM, instruction: Instruction): void {
-  const arg1 = instruction.arguments[0];
-  const arg2 = instruction.arguments[1];
-  const result = instruction.arguments[2];
-  vm.setMemory(Math.pow(vm.fetchMemory(arg1), vm.fetchMemory(arg2)), result);
+  vm.setMemory(
+    Math.pow(vm.fetchMemory(instruction.arguments[0]), vm.fetchMemory(instruction.arguments[1])),
+    instruction.arguments[2],
+  );
 }
 
 export function handleAbs(vm: VM, instruction: Instruction): void {
-  const arg1 = instruction.arguments[0];
-  const result = instruction.arguments[1];
-  vm.setMemory(Math.abs(vm.fetchMemory(arg1)), result);
+  vm.setMemory(Math.abs(vm.fetchMemory(instruction.arguments[0])), instruction.arguments[1]);
 }
 
 export function handleMin(vm: VM, instruction: Instruction): void {
-  const arg1 = instruction.arguments[0];
-  const arg1Data = vm.fetchMemory(arg1);
-  const arg2 = instruction.arguments[1];
-  const arg2Data = vm.fetchMemory(arg2);
-  const result = instruction.arguments[2];
-  if (arg1Data < arg2Data) {
-    vm.setMemory(arg1Data, result);
-  } else {
-    vm.setMemory(arg2Data, result);
-  }
+  vm.setMemory(
+    Math.min(vm.fetchMemory(instruction.arguments[0]), vm.fetchMemory(instruction.arguments[1])),
+    instruction.arguments[2],
+  );
 }
 
 export function handleMax(vm: VM, instruction: Instruction): void {
-  const arg1 = instruction.arguments[0];
-  const arg1Data = vm.fetchMemory(arg1);
-  const arg2 = instruction.arguments[1];
-  const arg2Data = vm.fetchMemory(arg2);
-  const result = instruction.arguments[2];
-  if (arg1Data > arg2Data) {
-    vm.setMemory(arg1Data, result);
-  } else {
-    vm.setMemory(arg2Data, result);
-  }
+  vm.setMemory(
+    Math.max(vm.fetchMemory(instruction.arguments[0]), vm.fetchMemory(instruction.arguments[1])),
+    instruction.arguments[2],
+  );
 }
 
 export function handleInc(vm: VM, instruction: Instruction): void {
-  const arg1 = instruction.arguments[0];
-  const arg1Data = vm.fetchMemory(arg1);
-  vm.setMemory(arg1Data+1, arg1);
+  const arg = instruction.arguments[0];
+  vm.setMemory(vm.fetchMemory(arg) + 1, arg);
 }
 
 export function handleDec(vm: VM, instruction: Instruction): void {
-  const arg1 = instruction.arguments[0];
-  const arg1Data = vm.fetchMemory(arg1);
-  vm.setMemory(arg1Data-1, arg1);
-}
-
-export function handleDec(vm: VM, instruction: Instruction): void {
-  const arg1 = instruction.arguments[0];
-  const arg1Data = vm.fetchMemory(arg1);
-  vm.setMemory(arg1Data-1, arg1);
+  const arg = instruction.arguments[0];
+  vm.setMemory(vm.fetchMemory(arg) - 1, arg);
 }
 
 export function handleRng(vm: VM, instruction: Instruction): void {
-  const start = vm.fetchMemory(instruction.arguments[0]);
-  const stop = vm.fetchMemory(instruction.arguments[1]);
-  const resultRef = instruction.arguments[2];
-  const min = Math.min(start, stop);
-  const max = Math.max(start, stop);
-  const generatedValue = Math.floor(Math.random() * (max - min + 1)) + min;
-  vm.setMemory(generatedValue, resultRef);
+  const a   = vm.fetchMemory(instruction.arguments[0]);
+  const b   = vm.fetchMemory(instruction.arguments[1]);
+  const min = Math.min(a, b);
+  const max = Math.max(a, b);
+  vm.setMemory(Math.floor(Math.random() * (max - min + 1)) + min, instruction.arguments[2]);
 }

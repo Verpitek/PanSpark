@@ -1,38 +1,27 @@
 // basics
-import { handleSet } from "./handlers/basic/set";
-import { handleAdd } from "./handlers/basic/add";
-import { handleSub } from "./handlers/basic/sub";
+import { handleSet }   from "./handlers/basic/set";
+import { handleAdd }   from "./handlers/basic/add";
+import { handleSub }   from "./handlers/basic/sub";
 import { handlePrint } from "./handlers/basic/print";
 
 // control flow
 import { handleIf } from "./handlers/control/if";
 import {
-  handleAbs,
-  handleDiv,
-  handleMax,
-  handleMin,
-  handleMul,
-  handleMod,
-  handlePow,
-  handleSqrt,
-  handleInc,
-  handleDec,
-  handleRng,
+  handleAbs, handleDiv, handleMax, handleMin,
+  handleMul, handleMod, handlePow, handleSqrt,
+  handleInc, handleDec, handleRng,
 } from "./handlers/arithmetics";
 
 export enum OpCode {
-  // basics
   SET,
   ADD,
   SUB,
   PRINT,
 
-  // control flow
   JUMP,
   POINT,
   IF,
 
-  // arithmetic extensions
   MUL,
   DIV,
   MOD,
@@ -45,590 +34,478 @@ export enum OpCode {
   DEC,
   RNG,
 
-  // utility
   NOP,
   HALT,
   UNTIL,
-  CALL, // not implemented
-  RET, // not implemented
+  CALL,
+  RET,
+
+  // internal — dispatches to a registered peripheral handler
+  PERIPHERAL,
 }
 
 export enum ArgType {
-  LITERAL = 0,
-  REGISTER = 1,
-  MEMORY = 2,
-  EQUAL = 3,
-  NOTEQUAL = 4,
-  LESS = 5,
-  GREATER = 6,
-  LESSEQUAL = 7,
-  GREATEQUAL = 8,
-  LABEL = 9,
-  HEAP = 10,
+  LITERAL    = 0,
+  REGISTER   = 1,
+  EQUAL      = 2,
+  NOTEQUAL   = 3,
+  LESS       = 4,
+  GREATER    = 5,
+  LESSEQUAL  = 6,
+  GREATEQUAL = 7,
+  LABEL      = 8,
+  STRING     = 9,
 }
 
 export interface Argument {
   type: ArgType;
-  value: number;
+  value: number | string;
 }
 
 export interface Instruction {
   operation: OpCode;
   arguments: Argument[];
   line: number;
+  peripheralName?: string;
+}
+
+export type RegValue =
+  | { tag: "int";    data: number }
+  | { tag: "string"; data: string };
+
+export type PeripheralHandler = (vm: VM, args: Argument[]) => void;
+
+// -------------------------------------------------------------------
+// Internal helpers
+// -------------------------------------------------------------------
+
+function byteSize(v: RegValue): number {
+  return v.tag === "int" ? 2 : v.data.length + 1;
+}
+
+/**
+ * Tokenizer that keeps double-quoted strings as single tokens.
+ *   SET "iron_ore" >> r0  →  ["SET", '"iron_ore"', ">>", "r0"]
+ */
+function tokenize(line: string): string[] {
+  const tokens: string[] = [];
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === " ") { i++; continue; }
+    if (line[i] === '"') {
+      let j = i + 1;
+      while (j < line.length && line[j] !== '"') j++;
+      tokens.push(line.slice(i, j + 1));
+      i = j + 1;
+    } else {
+      let j = i;
+      while (j < line.length && line[j] !== " ") j++;
+      tokens.push(line.slice(i, j));
+      i = j;
+    }
+  }
+  return tokens;
 }
 
 function parseArgument(arg: string): Argument {
-  if (arg.startsWith("r")) {
-    return { type: ArgType.REGISTER, value: parseInt(arg.slice(1)) };
-  } else if (arg.startsWith("x")) {
-    return { type: ArgType.MEMORY, value: parseInt(arg.slice(1)) };
-  } else if (arg == "==") {
-    return { type: ArgType.EQUAL, value: 0 };
-  } else if (arg == "!=") {
-    return { type: ArgType.NOTEQUAL, value: 0 };
-  } else if (arg == "<") {
-    return { type: ArgType.LESS, value: 0 };
-  } else if (arg == ">") {
-    return { type: ArgType.GREATER, value: 0 };
-  } else if (arg == "<=") {
-    return { type: ArgType.LESSEQUAL, value: 0 };
-  } else if (arg == ">=") {
-    return { type: ArgType.GREATEQUAL, value: 0 };
-  } else {
-    return { type: ArgType.LITERAL, value: parseInt(arg) };
-  }
+  if (arg.startsWith('"') && arg.endsWith('"'))
+    return { type: ArgType.STRING,     value: arg.slice(1, -1) };
+  if (arg.startsWith("r"))
+    return { type: ArgType.REGISTER,   value: parseInt(arg.slice(1)) };
+  if (arg === "==")  return { type: ArgType.EQUAL,      value: 0 };
+  if (arg === "!=")  return { type: ArgType.NOTEQUAL,   value: 0 };
+  if (arg === "<")   return { type: ArgType.LESS,        value: 0 };
+  if (arg === ">")   return { type: ArgType.GREATER,    value: 0 };
+  if (arg === "<=")  return { type: ArgType.LESSEQUAL,  value: 0 };
+  if (arg === ">=")  return { type: ArgType.GREATEQUAL, value: 0 };
+  return { type: ArgType.LITERAL, value: parseInt(arg) };
 }
 
 function buildInstruction(
   operation: OpCode,
-  argumentString: string,
+  tokens: string[],
   line: number,
+  peripheralName?: string,
 ): Instruction {
-  const splitArguments = argumentString.split(" ").splice(1);
-  let argArr: Argument[] = [];
-  for (let arg of splitArguments) {
-    if (arg != ">>") {
-      argArr.push(parseArgument(arg));
-    }
+  const argArr: Argument[] = [];
+  for (let i = 1; i < tokens.length; i++) {
+    if (tokens[i] !== ">>") argArr.push(parseArgument(tokens[i]));
   }
-  return { operation, arguments: argArr, line };
+  return { operation, arguments: argArr, line, peripheralName };
 }
 
+// -------------------------------------------------------------------
+// VM
+// -------------------------------------------------------------------
+
 export class VM {
-  public outputBuffer: number[] = [];
-  public instructions: Instruction[] = [];
-  public callStack: number[] = [];
+  public outputBuffer: (number | string)[] = [];
+  public instructions: Instruction[]       = [];
+  public callStack: Int16Array;
+  public stackPointer: number        = 0;
   public activeInstructionPos: number = 0;
 
-  public registerMemoryLimit: number = 0;
-  public machineMemoryLimit: number = 0;
-  public callStackLimit: number = 0;
-  public registerMemory: number[] = [];
-  public machineMemory: number[] = [];
+  public registerMemoryLimit: number;
+  public callStackLimit: number;
+  public heapLimit: number;
+
+  public registerMemory: RegValue[];
 
   public runFastFlag: boolean = false;
 
+  private peripherals: Map<string, PeripheralHandler> = new Map();
+
+  /**
+   * @param registerMemoryLimit  Number of r-registers  (e.g. 8 → r0–r7)
+   * @param callStackLimit       Max call stack depth    (e.g. 256)
+   * @param heapLimit            Total byte budget across all registers
+   */
   constructor(
     registerMemoryLimit: number,
-    machineMemoryLimit: number,
     callStackLimit: number,
+    heapLimit: number,
   ) {
     this.registerMemoryLimit = registerMemoryLimit;
-    this.machineMemoryLimit = machineMemoryLimit;
-    this.callStackLimit = callStackLimit;
-    this.registerMemory = new Array(this.registerMemoryLimit).fill(0);
-    this.machineMemory = new Array(this.machineMemoryLimit).fill(0);
+    this.callStackLimit      = callStackLimit;
+    this.heapLimit           = heapLimit;
+    this.registerMemory      = Array.from(
+      { length: registerMemoryLimit },
+      () => ({ tag: "int" as const, data: 0 }),
+    );
+    this.callStack = new Int16Array(callStackLimit).fill(0);
   }
 
-  /**
-   * Saves the current VM state to a compact string format.
-   * Format: instructionPos|r0,r1,r2,...|x0,x1,x2,...|output0,output1,...|instructions(JSON)
-   * @returns Compressed state string
-   */
-  public saveState(): string {
-    // Save instruction pointer
-    const ipPart = this.activeInstructionPos.toString();
+  // -------------------------------------------------------------------
+  // Peripheral API
+  // -------------------------------------------------------------------
 
-    // Save register memory (omit trailing zeros for space efficiency)
-    const regPart = this.registerMemory
-      .slice(0, this.findLastNonZeroIndex(this.registerMemory) + 1)
-      .join(",");
-
-    // Save machine memory (omit trailing zeros for space efficiency)
-    const memPart = this.machineMemory
-      .slice(0, this.findLastNonZeroIndex(this.machineMemory) + 1)
-      .join(",");
-
-    const callPart = this.callStack.join(",");
-
-    // Save output buffer
-    const outputPart = this.outputBuffer.join(",");
-
-    // Save instructions (compiled code)
-    const instructionsPart = JSON.stringify(this.instructions);
-
-    return `${ipPart}|${regPart}|${memPart}|${callPart}|${outputPart}|${instructionsPart}`;
+  public registerPeripheral(name: string, handler: PeripheralHandler): void {
+    this.peripherals.set(name, handler);
   }
 
-  /**
-   * Restores the VM state from a savestate string.
-   * @param state Savestate string from saveState()
-   */
-  public loadState(state: string): void {
-    // Find the first 3 pipes to split the first 4 parts
-    let pipeCount = 0;
-    let splitIndex = 0;
-    for (let i = 0; i < state.length && pipeCount < 5; i++) {
-      if (state[i] === "|") {
-        pipeCount++;
-        if (pipeCount === 5) {
-          splitIndex = i;
-          break;
-        }
-      }
-    }
-
-    const parts = state.substring(0, splitIndex).split("|");
-    const instructionsJson = state.substring(splitIndex + 1);
-
-    if (parts.length < 4) {
-      throw Error("Invalid savestate format");
-    }
-
-    // Restore instruction pointer
-    this.activeInstructionPos = parseInt(parts[0]);
-
-    // Restore register memory
-    this.registerMemory = [];
-    if (parts[1]) {
-      const regValues = parts[1].split(",").map((v) => parseInt(v));
-      for (let i = 0; i < regValues.length; i++) {
-        this.registerMemory[i] = regValues[i];
-      }
-    }
-    // Fill remaining registers with 0
-    for (
-      let i = this.registerMemory.length;
-      i < this.registerMemoryLimit;
-      i++
-    ) {
-      this.registerMemory[i] = 0;
-    }
-
-    // Restore machine memory
-    this.machineMemory = [];
-    if (parts[2]) {
-      const memValues = parts[2].split(",").map((v) => parseInt(v));
-      for (let i = 0; i < memValues.length; i++) {
-        this.machineMemory[i] = memValues[i];
-      }
-    }
-    // Fill remaining memory with 0
-    for (let i = this.machineMemory.length; i < this.machineMemoryLimit; i++) {
-      this.machineMemory[i] = 0;
-    }
-
-    this.callStack = [];
-    if (parts[3]) {
-      const calValues = parts[3].split(",").map((v) => parseInt(v));
-      for (let i = 0; i < calValues.length; i++) {
-        this.callStack[i] = calValues[i];
-      }
-    }
-
-    // Restore output buffer
-    this.outputBuffer = [];
-    if (parts[4]) {
-      this.outputBuffer = parts[4].split(",").map((v) => parseInt(v));
-    }
-
-    // Restore instructions
-    if (instructionsJson) {
-      this.instructions = JSON.parse(instructionsJson);
-    }
+  public unregisterPeripheral(name: string): void {
+    this.peripherals.delete(name);
   }
 
-  /**
-   * Helper function to find the index of the last non-zero value in an array
-   * @param arr Array to search
-   * @returns Index of last non-zero, or -1 if all zeros
-   */
-  private findLastNonZeroIndex(arr: number[]): number {
-    for (let i = arr.length - 1; i >= 0; i--) {
-      if (arr[i] !== 0 && arr[i] !== undefined) {
-        return i;
-      }
-    }
-    return -1;
+  // -------------------------------------------------------------------
+  // Heap accounting
+  // -------------------------------------------------------------------
+
+  private totalHeapUsed(): number {
+    return this.registerMemory.reduce((sum, v) => sum + byteSize(v), 0);
   }
 
-  public setMemory(data: number, dest: Argument) {
-    if (dest.type == ArgType.LITERAL) {
+  public heapAvailable(): number {
+    return this.heapLimit - this.totalHeapUsed();
+  }
+
+  // -------------------------------------------------------------------
+  // Memory access
+  // -------------------------------------------------------------------
+
+  public setMemory(data: number | string, dest: Argument): void {
+    if (dest.type !== ArgType.REGISTER) {
       throw Error(
-        "memory destination cannot be a LITERAL! at line: " +
-          (this.activeInstructionPos + 1),
-      );
-    } else if (dest.type == ArgType.REGISTER) {
-      if (dest.value >= this.registerMemoryLimit || dest.value < 0) {
-        throw Error("outside register memory bounds!");
-      }
-      this.registerMemory[dest.value] = data;
-    } else if (dest.type == ArgType.MEMORY) {
-      if (dest.value >= this.machineMemoryLimit || dest.value < 0) {
-        throw Error("outside machine memory bounds!");
-      }
-      this.machineMemory[dest.value] = data;
-    } else {
-      throw Error(
-        "illegal operation! at line: " + (this.activeInstructionPos + 1),
+        dest.type === ArgType.LITERAL
+          ? `Memory destination cannot be a LITERAL at line: ${this.activeInstructionPos + 1}`
+          : `Illegal memory destination at line: ${this.activeInstructionPos + 1}`,
       );
     }
+
+    const idx = dest.value as number;
+    if (idx >= this.registerMemoryLimit || idx < 0) throw Error("Outside register memory bounds!");
+
+    const newVal: RegValue = typeof data === "string"
+      ? { tag: "string", data }
+      : { tag: "int",    data };
+
+    const delta = byteSize(newVal) - byteSize(this.registerMemory[idx]);
+    if (this.totalHeapUsed() + delta > this.heapLimit) {
+      throw Error(`Heap overflow! Need ${delta} more bytes but only ${this.heapAvailable()} available.`);
+    }
+
+    this.registerMemory[idx] = newVal;
   }
 
+  /** Reads any value (number or string) from any argument type. */
+  public fetchValue(arg: Argument): number | string {
+    if (arg.type === ArgType.LITERAL)  return arg.value as number;
+    if (arg.type === ArgType.STRING)   return arg.value as string;
+    if (arg.type === ArgType.REGISTER) {
+      const idx = arg.value as number;
+      if (idx >= this.registerMemoryLimit || idx < 0) throw Error("Outside register memory bounds!");
+      return this.registerMemory[idx].data;
+    }
+    throw Error(`Empty or illegal memory fetch at line: ${this.activeInstructionPos + 1}`);
+  }
+
+  /** Reads a number. Throws if the register holds a string. */
   public fetchMemory(arg: Argument): number {
-    if (arg.type == ArgType.LITERAL) {
-      return arg.value;
-    } else if (arg.type == ArgType.REGISTER) {
-      if (arg.value >= this.registerMemoryLimit || arg.value < 0) {
-        throw Error("outside register memory bounds!");
-      }
-      return this.registerMemory[arg.value];
-    } else if (arg.type == ArgType.MEMORY) {
-      if (arg.value >= this.machineMemoryLimit || arg.value < 0) {
-        throw Error("outside machine memory bounds!");
-      }
-      return this.machineMemory[arg.value];
-    } else {
-      throw Error(
-        "empty or illegal memory fetch! at line: " +
-          (this.activeInstructionPos + 1),
-      );
+    const v = this.fetchValue(arg);
+    if (typeof v === "string") {
+      throw Error(`Expected number but got string "${v}" at line: ${this.activeInstructionPos + 1}`);
     }
+    return v;
   }
 
-  public pushCallStack(returnAddr: number) {
-    if (this.callStack.length >= this.callStackLimit) {
-      throw Error("Stack overflow! Too many nested calls.");
-    }
-    this.callStack.push(returnAddr);
+  // -------------------------------------------------------------------
+  // Call stack
+  // -------------------------------------------------------------------
+
+  public pushCallStack(returnAddr: number): void {
+    if (this.stackPointer >= this.callStackLimit) throw Error("Stack overflow!");
+    this.callStack[this.stackPointer++] = returnAddr;
   }
 
   public popCallStack(): number {
-    if (this.callStack.length === 0) {
-      throw Error("Stack underflow!");
-    }
-    return this.callStack.pop()!;
+    if (this.stackPointer <= 0) throw Error("Stack underflow!");
+    return this.callStack[--this.stackPointer];
   }
 
-  public *compile(code: string) {
-    let splitCode = code.split("\n");
-    let sanitizedCode: string[] = [];
-    // first pass: sanitization
-    for (let line in splitCode) {
-      splitCode[line] = splitCode[line].trimStart()
-      const opcode = splitCode[line].split(" ")[0];
-      if (opcode == "" || opcode.startsWith("//")) {
-        continue;
-      } else {
-        sanitizedCode.push(splitCode[line]);
-      }
+  // -------------------------------------------------------------------
+  // Serialisation
+  // -------------------------------------------------------------------
+
+  /** Format: ip|registers_json|callstack|output_json|instructions_json */
+  public saveState(): string {
+    return [
+      this.activeInstructionPos,
+      JSON.stringify(this.registerMemory),
+      Array.from(this.callStack.slice(0, this.stackPointer)).join(","),
+      JSON.stringify(this.outputBuffer),
+      JSON.stringify(this.instructions),
+    ].join("|");
+  }
+
+  public loadState(state: string): void {
+    const parts: string[] = [];
+    let remaining = state;
+    for (let i = 0; i < 4; i++) {
+      const idx = remaining.indexOf("|");
+      if (idx === -1) throw Error("Invalid savestate format");
+      parts.push(remaining.slice(0, idx));
+      remaining = remaining.slice(idx + 1);
     }
-    splitCode = sanitizedCode;
-    let pointMemory: Map<string, number> = new Map();
-    // second pass: point collection
-    for (let line in splitCode) {
-      const operation = splitCode[line].split(" ");
-      const opcode = operation[0];
-      if (opcode == "POINT") {
-        pointMemory[operation[1]] = line;
-      }
+    parts.push(remaining);
+    if (parts.length !== 5) throw Error("Invalid savestate format");
+
+    this.activeInstructionPos = parseInt(parts[0]);
+    this.registerMemory       = JSON.parse(parts[1]);
+
+    this.callStack.fill(0);
+    this.stackPointer = 0;
+    if (parts[2]) {
+      const vals = parts[2].split(",").map(Number);
+      this.stackPointer = vals.length;
+      vals.forEach((v, i) => this.callStack[i] = v);
     }
-    // third pass: compilation
-    for (let line in splitCode) {
+
+    this.outputBuffer = JSON.parse(parts[3]);
+    this.instructions = JSON.parse(parts[4]);
+  }
+
+  // -------------------------------------------------------------------
+  // Compiler  (precompiler pass runs first, internally)
+  // -------------------------------------------------------------------
+
+  /**
+   * Pass 0 — resolve $name declarations.
+   *
+   *   $name = r2     explicit register
+   *   $name = auto   next available register
+   *
+   * Declaration lines are stripped. All $name occurrences in remaining
+   * lines are replaced with their register string. Longest names are
+   * substituted first to avoid partial-match bugs ($foobar before $foo).
+   */
+  private resolveVariables(source: string): string {
+    const vars        = new Map<string, string>();
+    let   autoCounter = 0;
+    const output: string[] = [];
+
+    for (const line of source.split("\n")) {
+      const trimmed = line.trimStart();
+      const decl    = trimmed.match(/^\$(\w+)\s*=\s*(\S+)$/);
+
+      if (decl) {
+        const varName = `$${decl[1]}`;
+        const target  = decl[2];
+        if (target === "auto") {
+          vars.set(varName, `r${autoCounter++}`);
+        } else {
+          vars.set(varName, target);
+          if (target.startsWith("r")) {
+            const idx = parseInt(target.slice(1));
+            if (!isNaN(idx) && idx >= autoCounter) autoCounter = idx + 1;
+          }
+        }
+        continue; // strip declaration
+      }
+
+      let resolved = trimmed;
+      // longest names first to prevent partial matches
+      const sorted = [...vars.entries()].sort((a, b) => b[0].length - a[0].length);
+      for (const [name, reg] of sorted) resolved = resolved.replaceAll(name, reg);
+      output.push(resolved);
+    }
+
+    return output.join("\n");
+  }
+
+  public *compile(source: string) {
+    // Pass 0 — variable substitution
+    const code = this.resolveVariables(source);
+
+    // Pass 1 — strip blanks and comments
+    const sanitized: string[] = [];
+    for (const raw of code.split("\n")) {
+      const trimmed = raw.trimStart();
+      if (!trimmed || trimmed.startsWith("//")) continue;
+      sanitized.push(trimmed);
+    }
+
+    // Pass 2 — collect POINT labels → instruction index
+    const pointMemory = new Map<string, number>();
+    for (let i = 0; i < sanitized.length; i++) {
+      const toks = tokenize(sanitized[i]);
+      if (toks[0] === "POINT") pointMemory.set(toks[1], i);
+    }
+
+    const resolveLabel = (label: string): string => {
+      const idx = pointMemory.get(label);
+      if (idx === undefined) throw Error(`Undefined label: "${label}"`);
+      return idx.toString();
+    };
+
+    // Pass 3 — compile
+    for (let i = 0; i < sanitized.length; i++) {
+      let toks     = tokenize(sanitized[i]);
+      const opcode = toks[0];
+
+      const resolveAt = (tokenIdx: number) => {
+        toks = [...toks];
+        toks[tokenIdx] = resolveLabel(toks[tokenIdx]);
+      };
+
       let instruction: Instruction | null = null;
-      const opcode = splitCode[line].split(" ")[0];
+
       switch (opcode) {
-        case "SET":
-          instruction = buildInstruction(
-            OpCode.SET,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
-        case "ADD":
-          instruction = buildInstruction(
-            OpCode.ADD,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
-        case "SUB":
-          instruction = buildInstruction(
-            OpCode.SUB,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
-        case "PRINT":
-          instruction = buildInstruction(
-            OpCode.PRINT,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
+        case "SET":   instruction = buildInstruction(OpCode.SET,   toks, i); break;
+        case "ADD":   instruction = buildInstruction(OpCode.ADD,   toks, i); break;
+        case "SUB":   instruction = buildInstruction(OpCode.SUB,   toks, i); break;
+        case "PRINT": instruction = buildInstruction(OpCode.PRINT, toks, i); break;
 
-        // Control Flow
-        case "JUMP":
-          instruction = buildInstruction(
-            OpCode.JUMP,
-            splitCode[line].replace(
-              splitCode[line].split(" ")[1],
-              pointMemory[splitCode[line].split(" ")[1]],
-            ),
-            parseInt(line),
-          );
-          break;
-        case "POINT":
-          instruction = buildInstruction(
-            OpCode.POINT,
-            splitCode[line].replace(
-              splitCode[line].split(" ")[1],
-              pointMemory[splitCode[line].split(" ")[1]],
-            ),
-            parseInt(line),
-          );
-          break;
-        case "IF":
-          instruction = buildInstruction(
-            OpCode.IF,
-            splitCode[line].replace(
-              splitCode[line].split(" ")[5],
-              pointMemory[splitCode[line].split(" ")[5]],
-            ),
-            parseInt(line),
-          );
-          break;
+        case "JUMP":  resolveAt(1); instruction = buildInstruction(OpCode.JUMP,  toks, i); break;
+        case "POINT": resolveAt(1); instruction = buildInstruction(OpCode.POINT, toks, i); break;
+        case "CALL":  resolveAt(1); instruction = buildInstruction(OpCode.CALL,  toks, i); break;
+        // IF <v1> <op> <v2> >> <label>  →  tokens[5] is the label
+        case "IF":    resolveAt(5); instruction = buildInstruction(OpCode.IF,    toks, i); break;
 
-        // Arithmetic Extensions
-        case "MUL":
-          instruction = buildInstruction(
-            OpCode.MUL,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
-        case "DIV":
-          instruction = buildInstruction(
-            OpCode.DIV,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
-        case "MOD":
-          instruction = buildInstruction(
-            OpCode.MOD,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
-        case "SQRT":
-          instruction = buildInstruction(
-            OpCode.SQRT,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
-        case "POW":
-          instruction = buildInstruction(
-            OpCode.POW,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
-        case "ABS":
-          instruction = buildInstruction(
-            OpCode.ABS,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
-        case "MIN":
-          instruction = buildInstruction(
-            OpCode.MIN,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
-        case "MAX":
-          instruction = buildInstruction(
-            OpCode.MAX,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
-        case "INC":
-          instruction = buildInstruction(
-            OpCode.INC,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
-        case "DEC":
-          instruction = buildInstruction(
-            OpCode.DEC,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
-        case "RNG":
-          instruction = buildInstruction(
-            OpCode.RNG,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
+        case "MUL":   instruction = buildInstruction(OpCode.MUL,   toks, i); break;
+        case "DIV":   instruction = buildInstruction(OpCode.DIV,   toks, i); break;
+        case "MOD":   instruction = buildInstruction(OpCode.MOD,   toks, i); break;
+        case "SQRT":  instruction = buildInstruction(OpCode.SQRT,  toks, i); break;
+        case "POW":   instruction = buildInstruction(OpCode.POW,   toks, i); break;
+        case "ABS":   instruction = buildInstruction(OpCode.ABS,   toks, i); break;
+        case "MIN":   instruction = buildInstruction(OpCode.MIN,   toks, i); break;
+        case "MAX":   instruction = buildInstruction(OpCode.MAX,   toks, i); break;
+        case "INC":   instruction = buildInstruction(OpCode.INC,   toks, i); break;
+        case "DEC":   instruction = buildInstruction(OpCode.DEC,   toks, i); break;
+        case "RNG":   instruction = buildInstruction(OpCode.RNG,   toks, i); break;
 
-        // Utility
-        case "NOP":
-          instruction = buildInstruction(
-            OpCode.NOP,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
-        case "HALT":
-          instruction = buildInstruction(
-            OpCode.HALT,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
-        case "UNTIL":
-          instruction = buildInstruction(
-            OpCode.UNTIL,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
-        case "CALL":
-          instruction = buildInstruction(
-            OpCode.CALL,
-            splitCode[line].replace(
-              splitCode[line].split(" ")[1],
-              pointMemory[splitCode[line].split(" ")[1]],
-            ),
-            parseInt(line),
-          );
-          break;
-        case "RET":
-          instruction = buildInstruction(
-            OpCode.RET,
-            splitCode[line],
-            parseInt(line),
-          );
-          break;
+        case "NOP":   instruction = buildInstruction(OpCode.NOP,   toks, i); break;
+        case "HALT":  instruction = buildInstruction(OpCode.HALT,  toks, i); break;
+        case "UNTIL": instruction = buildInstruction(OpCode.UNTIL, toks, i); break;
+        case "RET":   instruction = buildInstruction(OpCode.RET,   toks, i); break;
+
         default:
-          console.log("unknown OpCode: " + opcode);
-          continue;
+          if (this.peripherals.has(opcode)) {
+            instruction = buildInstruction(OpCode.PERIPHERAL, toks, i, opcode);
+          } else {
+            console.warn(`Unknown OpCode "${opcode}" at line ${i} — skipped`);
+            continue;
+          }
       }
+
       this.instructions.push(instruction);
       yield instruction;
     }
   }
 
+  // -------------------------------------------------------------------
+  // Execution
+  // -------------------------------------------------------------------
+
   public *run() {
     while (this.activeInstructionPos < this.instructions.length) {
-      let instructionPointerModified: boolean = false;
-      this.outputBuffer = [];
-      const parsedInstruction = this.instructions[this.activeInstructionPos];
-      switch (parsedInstruction.operation) {
-        case OpCode.SET:
-          handleSet(this, parsedInstruction);
-          break;
-        case OpCode.PRINT:
-          handlePrint(this, parsedInstruction);
-          break;
-        case OpCode.ADD:
-          handleAdd(this, parsedInstruction);
-          break;
-        case OpCode.SUB:
-          handleSub(this, parsedInstruction);
-          break;
+      let ipModified = false;
+      this.outputBuffer  = [];
+      const instr = this.instructions[this.activeInstructionPos];
+
+      switch (instr.operation) {
+        case OpCode.SET:   handleSet(this, instr);   break;
+        case OpCode.PRINT: handlePrint(this, instr); break;
+        case OpCode.ADD:   handleAdd(this, instr);   break;
+        case OpCode.SUB:   handleSub(this, instr);   break;
+
         case OpCode.JUMP:
-          this.activeInstructionPos = parsedInstruction.arguments[0].value;
-          instructionPointerModified = true;
+          this.activeInstructionPos = instr.arguments[0].value as number;
+          ipModified = true;
           break;
+
         case OpCode.POINT:
           break;
+
         case OpCode.IF:
-          const ifCondition = handleIf(this, parsedInstruction);
-          if (ifCondition == true) {
-            this.activeInstructionPos = parsedInstruction.arguments[3].value;
-            instructionPointerModified = true;
+          if (handleIf(this, instr)) {
+            this.activeInstructionPos = instr.arguments[3].value as number;
+            ipModified = true;
           }
           break;
-        case OpCode.HALT:
-          return;
-        case OpCode.NOP:
-          break;
-        case OpCode.MUL:
-          handleMul(this, parsedInstruction);
-          break;
-        case OpCode.DIV:
-          handleDiv(this, parsedInstruction);
-          break;
-        case OpCode.MOD:
-          handleMod(this, parsedInstruction);
-          break;
-        case OpCode.SQRT:
-          handleSqrt(this, parsedInstruction);
-          break;
-        case OpCode.POW:
-          handlePow(this, parsedInstruction);
-          break;
-        case OpCode.ABS:
-          handleAbs(this, parsedInstruction);
-          break;
-        case OpCode.MIN:
-          handleMin(this, parsedInstruction);
-          break;
-        case OpCode.MAX:
-          handleMax(this, parsedInstruction);
-          break;
-        case OpCode.INC:
-          handleInc(this, parsedInstruction);
-          break;
-        case OpCode.DEC:
-          handleDec(this, parsedInstruction);
-          break;
-        case OpCode.RNG:
-          handleRng(this, parsedInstruction);
-          break;
+
+        case OpCode.HALT: return;
+        case OpCode.NOP:  break;
+
+        case OpCode.MUL:  handleMul(this, instr);  break;
+        case OpCode.DIV:  handleDiv(this, instr);  break;
+        case OpCode.MOD:  handleMod(this, instr);  break;
+        case OpCode.SQRT: handleSqrt(this, instr); break;
+        case OpCode.POW:  handlePow(this, instr);  break;
+        case OpCode.ABS:  handleAbs(this, instr);  break;
+        case OpCode.MIN:  handleMin(this, instr);  break;
+        case OpCode.MAX:  handleMax(this, instr);  break;
+        case OpCode.INC:  handleInc(this, instr);  break;
+        case OpCode.DEC:  handleDec(this, instr);  break;
+        case OpCode.RNG:  handleRng(this, instr);  break;
+
         case OpCode.UNTIL:
-          const untilCondition = handleIf(this, parsedInstruction);
-          if (untilCondition != true) {
-            instructionPointerModified = true;
-          }
+          if (!handleIf(this, instr)) ipModified = true;
           break;
+
         case OpCode.CALL:
           this.pushCallStack(this.activeInstructionPos + 1);
-          this.activeInstructionPos = parsedInstruction.arguments[0].value;
-          instructionPointerModified = true;
+          this.activeInstructionPos = instr.arguments[0].value as number;
+          ipModified = true;
           break;
+
         case OpCode.RET:
           this.activeInstructionPos = this.popCallStack();
-          instructionPointerModified = true;
+          ipModified = true;
           break;
+
+        case OpCode.PERIPHERAL: {
+          const handler = this.peripherals.get(instr.peripheralName!);
+          if (!handler) throw Error(`No handler registered for: "${instr.peripheralName}"`);
+          handler(this, instr.arguments);
+          break;
+        }
+
         default:
-          throw Error("Unknown OpCode: " + parsedInstruction.operation);
+          throw Error(`Unknown OpCode: ${instr.operation}`);
       }
-      if (!this.runFastFlag) {
-        yield;
-      }
-      if (!instructionPointerModified) {
-        this.activeInstructionPos++;
-      }
+
+      if (!this.runFastFlag) yield;
+      if (!ipModified) this.activeInstructionPos++;
     }
   }
 }

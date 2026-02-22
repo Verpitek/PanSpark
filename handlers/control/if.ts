@@ -1,32 +1,21 @@
 import { Instruction, VM, ArgType } from "../../panspark";
 
 export function handleIf(vm: VM, instruction: Instruction): boolean {
-  const arg1 = instruction.arguments[0];
-  const operator = instruction.arguments[1];
-  const arg2 = instruction.arguments[2];
+  const a  = instruction.arguments[0];
+  const op = instruction.arguments[1];
+  const b  = instruction.arguments[2];
 
-  let condition: boolean;
-  switch (operator.type) {
-    case ArgType.EQUAL:
-      condition = vm.fetchMemory(arg1) == vm.fetchMemory(arg2);
-      break;
-    case ArgType.NOTEQUAL:
-      condition = vm.fetchMemory(arg1) != vm.fetchMemory(arg2);
-      break;
-    case ArgType.LESS:
-      condition = vm.fetchMemory(arg1) < vm.fetchMemory(arg2);
-      break;
-    case ArgType.GREATER:
-      condition = vm.fetchMemory(arg1) > vm.fetchMemory(arg2);
-      break;
-    case ArgType.LESSEQUAL:
-      condition = vm.fetchMemory(arg1) <= vm.fetchMemory(arg2);
-      break;
-    case ArgType.GREATEQUAL:
-      condition = vm.fetchMemory(arg1) >= vm.fetchMemory(arg2);
-      break;
-    default:
-      condition = false;
+  switch (op.type) {
+    // == and != work on both strings and integers
+    case ArgType.EQUAL:      return vm.fetchValue(a)  == vm.fetchValue(b);
+    case ArgType.NOTEQUAL:   return vm.fetchValue(a)  != vm.fetchValue(b);
+
+    // ordering is integer-only — fetchMemory throws if a string slips in
+    case ArgType.LESS:       return vm.fetchMemory(a) <  vm.fetchMemory(b);
+    case ArgType.GREATER:    return vm.fetchMemory(a) >  vm.fetchMemory(b);
+    case ArgType.LESSEQUAL:  return vm.fetchMemory(a) <= vm.fetchMemory(b);
+    case ArgType.GREATEQUAL: return vm.fetchMemory(a) >= vm.fetchMemory(b);
+
+    default: return false;
   }
-  return condition;
 }
