@@ -1,8 +1,21 @@
 import { VM } from "./panspark";
 
+// custom periferal
+import { registerArrayLib } from "./peripherals/array";
+
 const code = `
 $counter = r0
 $limit = r1
+// automatic assigning or registers
+$list = auto
+
+ARR_NEW >> $list
+PRINT $list
+ARR_PUSH $list "iron_ore"
+ARR_PUSH $list "gold_ore"
+
+ARR_GET $list 1 >> r3
+PRINT r3
 
 SET 10 >> $limit
 
@@ -13,6 +26,8 @@ IF $limit > $counter >> loop
 `;
 
 const vm = new VM(8, 8, 1280);
+registerArrayLib(vm);
+
 
 vm.registerPeripheral("MATH_FAC", (vm, args) => {
   const n      = vm.fetchMemory(args[0]);
