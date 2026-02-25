@@ -2,7 +2,7 @@
 A lightweight assembly-like virtual machine designed for embedded simulation, peripheral scripting, and low-level programming experiments. Built for LunaTech.
 
 ## Features
-- **Tagged Registers**: Hold integers (2 bytes) or strings (length + 1 byte) within a shared heap budget
+- **Tagged Registers**: Hold integers (2 bytes), strings (length + 1 byte), or arrays of numbers (2 bytes per element) within a shared heap budget
 - **Named Variables**: `$name = r0` / `$name = auto` declarations resolved automatically at compile time
 - **Full Instruction Set**: Arithmetic, logic, control flow, and function calls
 - **Custom OpCodes**: Register peripheral handlers at runtime — `MACH_GET`, `MATH_FAC`, anything you want
@@ -132,7 +132,7 @@ new VM(registerMemoryLimit, callStackLimit, heapLimit)
 | :--- | :--- |
 | `registerMemoryLimit` | Number of `r` registers (e.g. `8` → `r0`–`r7`) |
 | `callStackLimit` | Max call stack depth |
-| `heapLimit` | Total byte budget across all registers (int = 2B, string = length + 1B) |
+| `heapLimit` | Total byte budget across all registers (int = 2B, string = length + 1B, array = 2B per element) |
 
 ### Core Methods
 
@@ -144,10 +144,45 @@ new VM(registerMemoryLimit, callStackLimit, heapLimit)
 | `loadState(state)` | Restores VM from a serialized state string |
 | `registerPeripheral(name, handler)` | Registers a custom opcode handler |
 | `unregisterPeripheral(name)` | Removes a custom opcode handler |
-| `setMemory(data, dest)` | Writes `number \| string` to a register |
+| `setMemory(data, dest)` | Writes `number \| string \| number[]` to a register |
 | `fetchMemory(arg)` | Reads a number — throws on strings |
-| `fetchValue(arg)` | Reads a `number \| string` from any argument type |
+| `fetchValue(arg)` | Reads a `number \| string \| number[]` from any argument type |
 | `heapAvailable()` | Returns remaining heap bytes |
+
+## Array Operations
+
+PanSpark supports first-class arrays of numbers. Arrays can be created with literals (`[1,2,3]`) or with `ARR_NEW`. All array operations are built-in opcodes.
+
+| OpCode | Syntax | Description |
+| :--- | :--- | :--- |
+| **SET** (array literal) | `SET [1,2,3] >> dest` | Creates an array with the given elements |
+| **ARR_NEW** | `ARR_NEW size >> dest` | Creates a zero-filled array of given length |
+| **ARR_PUSH** | `ARR_PUSH arr val` | Appends value to array |
+| **ARR_POP** | `ARR_POP arr >> dest` | Removes last element, stores in dest (0 if empty) |
+| **ARR_GET** | `ARR_GET arr idx >> dest` | Reads element at index |
+| **ARR_SET** | `ARR_SET arr idx val` | Writes element at index |
+| **ARR_LEN** | `ARR_LEN arr >> dest` | Stores array length in dest |
+| **ARR_SORT** | `ARR_SORT arr` | Sorts array in ascending order |
+
+- Empty array literals (`[]`) are not allowed; use `ARR_NEW 0`.
+- Arrays cannot contain strings, only numbers.
+- Heap cost: 2 bytes per array element.
+- IF comparisons on arrays compare the **sum** of elements for equality and ordering.
+
+### Example
+```arm
+SET [10,20,30] >> r0
+ARR_PUSH r0 40
+ARR_GET r0 1 >> r1
+PRINT r1  // 20
+ARR_SET r0 0 99
+PRINT r0  // [99,20,30,40]
+ARR_LEN r0 >> r2
+PRINT r2  // 4
+ARR_SORT r0
+PRINT r0  // [20,30,40,99]
+HALT
+```
 
 ## Example Programs
 

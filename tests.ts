@@ -260,8 +260,113 @@ test("IF ordering operators", () => {
 test("IF ordering on string throws", () => {
   expectThrows(
     () => run(`SET "abc" >> r0\nSET "xyz" >> r1\nIF r0 < r1 >> nope\nHALT\nPOINT nope\nHALT`),
-    "Expected number but got string",
+    "Expected number or array but got string",
   );
+});
+
+test("IF-ELSE — true branch taken", () => {
+  expect(run(`
+    SET 5 >> r0
+    IF r0 == 5 >> trueLabel ELSE falseLabel
+    PRINT 0
+    HALT
+    POINT trueLabel
+    PRINT 1
+    HALT
+    POINT falseLabel
+    PRINT 2
+    HALT
+  `), [1]);
+});
+
+test("IF-ELSE — false branch taken", () => {
+  expect(run(`
+    SET 3 >> r0
+    IF r0 == 5 >> trueLabel ELSE falseLabel
+    PRINT 0
+    HALT
+    POINT trueLabel
+    PRINT 1
+    HALT
+    POINT falseLabel
+    PRINT 2
+    HALT
+  `), [2]);
+});
+
+test("IF-ELSE — string equality true", () => {
+  expect(run(`
+    SET "iron_ore" >> r0
+    IF r0 == "iron_ore" >> trueLabel ELSE falseLabel
+    PRINT 0
+    HALT
+    POINT trueLabel
+    PRINT 1
+    HALT
+    POINT falseLabel
+    PRINT 2
+    HALT
+  `), [1]);
+});
+
+test("IF-ELSE — string equality false", () => {
+  expect(run(`
+    SET "gold_ore" >> r0
+    IF r0 == "iron_ore" >> trueLabel ELSE falseLabel
+    PRINT 0
+    HALT
+    POINT trueLabel
+    PRINT 1
+    HALT
+    POINT falseLabel
+    PRINT 2
+    HALT
+  `), [2]);
+});
+
+test("IF-ELSE — ordering operators", () => {
+  expect(run(`
+    SET 5 >> r0
+    IF r0 > 3 >> a ELSE b
+    PRINT 0
+    HALT
+    POINT a
+    IF r0 < 10 >> c ELSE d
+    PRINT 0
+    HALT
+    POINT b
+    PRINT 0
+    HALT
+    POINT c
+    PRINT 1
+    HALT
+    POINT d
+    PRINT 0
+    HALT
+  `), [1]);
+});
+
+test("IF-ELSE — missing else label throws", () => {
+  expectThrows(
+    () => run(`IF r0 == 5 >> true ELSE\nHALT\nPOINT true\nHALT`),
+    "Missing label after ELSE",
+  );
+});
+
+test("IF-ELSE with named variables", () => {
+  expect(run(`
+    $val = auto
+    SET 7 >> $val
+    IF $val > 5 >> high ELSE low
+    PRINT 0
+    HALT
+    POINT high
+    PRINT 1
+    HALT
+    POINT low
+    PRINT 2
+    HALT
+  `), [1]);
 });
 
 test("countdown loop", () => {
@@ -520,6 +625,106 @@ test("NOP does nothing", () => {
 
 test("HALT stops immediately", () => {
   expect(run(`HALT\nPRINT 999`), []);
+});
+
+// -------------------------------------------------------------------
+// 11. Arrays
+// -------------------------------------------------------------------
+
+section("11. Arrays");
+
+test("SET array literal", () => {
+  expect(run(`SET [1,2,3] >> r0\nPRINT r0\nHALT`), ["[1,2,3]"]);
+});
+
+test("SET empty array throws", () => {
+  expectThrows(() => run(`SET [] >> r0\nHALT`), "Empty array literal not allowed");
+});
+
+test("SET invalid array literal throws", () => {
+  expectThrows(() => run(`SET [1,foo,3] >> r0\nHALT`), "Invalid array literal");
+});
+
+test("PRINT array", () => {
+  expect(run(`SET [10,20,30] >> r0\nPRINT r0\nHALT`), ["[10,20,30]"]);
+});
+
+test("ARR_NEW creates zero-filled array", () => {
+  expect(run(`ARR_NEW 5 >> r0\nPRINT r0\nHALT`), ["[0,0,0,0,0]"]);
+});
+
+test("ARR_NEW negative size throws", () => {
+  expectThrows(() => run(`ARR_NEW -1 >> r0\nHALT`), "Array size cannot be negative");
+});
+
+test("ARR_PUSH appends element", () => {
+  expect(run(`SET [1,2] >> r0\nARR_PUSH r0 3\nPRINT r0\nHALT`), ["[1,2,3]"]);
+});
+
+test("ARR_POP removes last element", () => {
+  const out = run(`SET [1,2,3] >> r0\nARR_POP r0 >> r1\nPRINT r1\nPRINT r0\nHALT`);
+  expect(out, [3, "[1,2]"]);
+});
+
+test("ARR_POP empty array returns 0", () => {
+  expect(run(`ARR_NEW 0 >> r0\nARR_POP r0 >> r1\nPRINT r1\nHALT`), [0]);
+});
+
+test("ARR_GET reads element", () => {
+  expect(run(`SET [10,20,30] >> r0\nARR_GET r0 1 >> r1\nPRINT r1\nHALT`), [20]);
+});
+
+test("ARR_GET out of bounds throws", () => {
+  expectThrows(() => run(`SET [1,2] >> r0\nARR_GET r0 5 >> r1\nHALT`), "Array index 5 out of bounds");
+});
+
+test("ARR_SET writes element", () => {
+  expect(run(`SET [1,2,3] >> r0\nARR_SET r0 1 99\nPRINT r0\nHALT`), ["[1,99,3]"]);
+});
+
+test("ARR_LEN returns length", () => {
+  expect(run(`SET [5,10,15,20] >> r0\nARR_LEN r0 >> r1\nPRINT r1\nHALT`), [4]);
+});
+
+test("ARR_SORT sorts array", () => {
+  expect(run(`SET [3,1,4,2] >> r0\nARR_SORT r0\nPRINT r0\nHALT`), ["[1,2,3,4]"]);
+});
+
+test("IF array sum equality true", () => {
+  expect(run(`SET [1,2,3] >> r0\nSET 6 >> r1\nIF r0 == r1 >> equal\nPRINT 0\nHALT\nPOINT equal\nPRINT 1\nHALT`), [1]);
+});
+
+test("IF array sum equality false", () => {
+  expect(run(`SET [1,2,3] >> r0\nSET 7 >> r1\nIF r0 == r1 >> equal\nPRINT 0\nHALT\nPOINT equal\nPRINT 1\nHALT`), [0]);
+});
+
+test("IF array sum equality with another array", () => {
+  expect(run(`SET [1,2,3] >> r0\nSET [6] >> r1\nIF r0 == r1 >> equal\nPRINT 0\nHALT\nPOINT equal\nPRINT 1\nHALT`), [1]);
+});
+
+test("IF array ordering (sum <)", () => {
+  expect(run(`SET [1,2] >> r0\nSET 4 >> r1\nIF r0 < r1 >> less\nPRINT 0\nHALT\nPOINT less\nPRINT 1\nHALT`), [1]);
+});
+
+test("IF array ordering (sum >)", () => {
+  expect(run(`SET [5,10] >> r0\nSET 12 >> r1\nIF r0 > r1 >> greater\nPRINT 0\nHALT\nPOINT greater\nPRINT 1\nHALT`), [1]);
+});
+
+test("IF array vs string throws", () => {
+  expectThrows(() => run(`SET [1,2] >> r0\nSET "abc" >> r1\nIF r0 < r1 >> nope\nHALT\nPOINT nope\nHALT`), "Expected number or array but got string");
+});
+
+test("heap accounting for arrays", () => {
+  const vm = new VM(8, 256, 1280);
+  const before = vm.heapAvailable();
+  run(`SET [1,2,3,4,5] >> r0\nHALT`, vm);
+  // 5 elements × 2 bytes = 10 bytes, minus 2 bytes for replaced integer = 8 bytes delta
+  expect(vm.heapAvailable(), before - 8);
+});
+
+test("heap overflow with large array", () => {
+  const vm = new VM(8, 256, 10); // 10 bytes heap
+  expectThrows(() => run(`SET [1,2,3,4,5,6] >> r0\nHALT`, vm), "Heap overflow");
 });
 
 // -------------------------------------------------------------------

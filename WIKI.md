@@ -47,6 +47,7 @@ All registers share a single byte pool. The VM checks the budget on every write.
 | :--- | :--- |
 | Integer | 2 bytes |
 | String | `string.length + 1` bytes |
+| Array | `2 × element_count` bytes |
 
 ```typescript
 // 8 registers, default int each = 16 bytes baseline
@@ -153,6 +154,24 @@ All arithmetic operations are **integer-only**. Passing a string register throws
 | **INC** | `INC <reg>` | Increments in-place |
 | **DEC** | `DEC <reg>` | Decrements in-place |
 
+### Array Operations
+
+Arrays are first-class values of type `number[]`. Empty array literals (`[]`) are not allowed; use `ARR_NEW 0`. Arrays cannot contain strings, only numbers.
+
+| OpCode | Syntax | Description |
+| :--- | :--- | :--- |
+| **SET** (array literal) | `SET [1,2,3] >> dest` | Creates array with given elements |
+| **ARR_NEW** | `ARR_NEW size >> dest` | Creates zero-filled array of given length |
+| **ARR_PUSH** | `ARR_PUSH arr val` | Appends value to array |
+| **ARR_POP** | `ARR_POP arr >> dest` | Removes last element, stores in dest (0 if empty) |
+| **ARR_GET** | `ARR_GET arr idx >> dest` | Reads element at index |
+| **ARR_SET** | `ARR_SET arr idx val` | Writes element at index |
+| **ARR_LEN** | `ARR_LEN arr >> dest` | Stores array length in dest |
+| **ARR_SORT** | `ARR_SORT arr` | Sorts array in ascending order |
+
+- Heap cost: 2 bytes per element.
+- `IF` comparisons on arrays compare the **sum** of elements for equality and ordering.
+
 ---
 
 ## Control Flow & Functions
@@ -166,13 +185,16 @@ JUMP <label>
 ### Conditional Jumps (IF)
 
 ```
-IF <val1> <op> <val2> >> <label>
+IF <val1> <op> <val2> >> <label_true>
+IF <val1> <op> <val2> >> <label_true> ELSE <label_false>
 ```
 
 **Operators:** `==`, `!=`, `<`, `>`, `<=`, `>=`
 
-- `==` and `!=` work on both integers and strings (content comparison).
-- `<`, `>`, `<=`, `>=` are integer-only — passing a string throws.
+- `==` and `!=` work on integers, strings (content comparison), and arrays (sum equality).
+- `<`, `>`, `<=`, `>=` work on integers and arrays (sum ordering) — passing a string throws.
+
+If the condition is true, execution jumps to `label_true`. If the condition is false and an `ELSE` clause is provided, execution jumps to `label_false`; otherwise execution continues to the next instruction.
 
 ### Blocking Wait (UNTIL)
 
@@ -318,7 +340,37 @@ POINT loop
   HALT
 ```
 
-### 4. Custom OpCode Factorial
+### 4. Array Operations Example
+
+```arm
+$arr   = auto
+$len   = auto
+$elem  = auto
+
+SET [5,1,9,3] >> $arr
+ARR_SORT $arr
+PRINT $arr          // [1,3,5,9]
+ARR_PUSH $arr 7
+PRINT $arr          // [1,3,5,9,7]
+ARR_SORT $arr
+PRINT $arr          // [1,3,5,7,9]
+ARR_LEN $arr >> $len
+PRINT $len          // 5
+ARR_GET $arr 2 >> $elem
+PRINT $elem         // 5
+ARR_SET $arr 0 99
+PRINT $arr          // [99,3,5,7,9]
+
+// Compare array sum with number
+IF $arr > 100 >> big
+PRINT "sum <= 100"
+HALT
+POINT big
+PRINT "sum > 100"
+HALT
+```
+
+### 5. Custom OpCode Factorial
 
 ```typescript
 vm.registerPeripheral("MATH_FAC", (vm, args) => {
@@ -437,8 +489,8 @@ const vm = new VM(8, 256, 1280);
 | Name | Description |
 | :--- | :--- |
 | `OpCode` | All built-in operations plus `PERIPHERAL` for custom dispatch |
-| `ArgType` | `LITERAL`, `REGISTER`, `STRING`, comparison operators |
+| `ArgType` | `LITERAL`, `REGISTER`, `STRING`, `ARRAY`, comparison operators |
 | `Instruction` | `{ operation, arguments, line, peripheralName? }` |
-| `Argument` | `{ type: ArgType, value: number \| string }` |
-| `RegValue` | `{ tag: "int", data: number } \| { tag: "string", data: string }` |
+| `Argument` | `{ type: ArgType, value: number \| string \| number[] }` |
+| `RegValue` | `{ tag: "int", data: number } \| { tag: "string", data: string } \| { tag: "array", data: number[] }` |
 | `PeripheralHandler` | `(vm: VM, args: Argument[]) => void` |
