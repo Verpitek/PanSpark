@@ -72,17 +72,18 @@ export enum OpCode {
 }
 
 export enum ArgType {
-  LITERAL = 0,
-  REGISTER = 1,
-  EQUAL = 2,
-  NOTEQUAL = 3,
-  LESS = 4,
-  GREATER = 5,
-  LESSEQUAL = 6,
-  GREATEQUAL = 7,
-  LABEL = 8,
-  STRING = 9,
-  ARRAY = 10,
+  LITERAL    = 0,
+  REGISTER   = 1,
+  MACHINE    = 2,
+  EQUAL      = 3,
+  NOTEQUAL   = 4,
+  LESS       = 5,
+  GREATER    = 6,
+  LESSEQUAL  = 7,
+  GREATEQUAL = 8,
+  LABEL      = 9,
+  STRING     = 10,
+  ARRAY      = 11,
 }
 
 export interface Argument {
@@ -150,24 +151,26 @@ function tokenize(line: string): string[] {
 
 function parseArgument(arg: string): Argument {
   if (arg.startsWith('"') && arg.endsWith('"'))
-    return { type: ArgType.STRING, value: arg.slice(1, -1) };
+    return { type: ArgType.STRING,   value: arg.slice(1, -1) };
   if (arg.startsWith("[") && arg.endsWith("]")) {
     const inner = arg.slice(1, -1).trim();
     if (inner.length === 0)
       throw Error(`Empty array literal not allowed: ${arg}`);
     const elements = inner.split(",").map((s) => parseInt(s.trim()));
     if (elements.some(isNaN)) throw Error(`Invalid array literal: ${arg}`);
-    return { type: ArgType.ARRAY, value: elements };
+    return { type: ArgType.ARRAY,    value: elements };
   }
   if (arg.startsWith("r"))
     return { type: ArgType.REGISTER, value: parseInt(arg.slice(1)) };
-  if (arg === "==") return { type: ArgType.EQUAL, value: 0 };
-  if (arg === "!=") return { type: ArgType.NOTEQUAL, value: 0 };
-  if (arg === "<") return { type: ArgType.LESS, value: 0 };
-  if (arg === ">") return { type: ArgType.GREATER, value: 0 };
-  if (arg === "<=") return { type: ArgType.LESSEQUAL, value: 0 };
-  if (arg === ">=") return { type: ArgType.GREATEQUAL, value: 0 };
-  return { type: ArgType.LITERAL, value: parseInt(arg) };
+  if (arg.startsWith("x"))
+    return { type: ArgType.MACHINE,  value: parseInt(arg.slice(1)) };
+  if (arg === "==")  return { type: ArgType.EQUAL,      value: 0 };
+  if (arg === "!=")  return { type: ArgType.NOTEQUAL,   value: 0 };
+  if (arg === "<")   return { type: ArgType.LESS,        value: 0 };
+  if (arg === ">")   return { type: ArgType.GREATER,    value: 0 };
+  if (arg === "<=")  return { type: ArgType.LESSEQUAL,  value: 0 };
+  if (arg === ">=")  return { type: ArgType.GREATEQUAL, value: 0 };
+  return { type: ArgType.LITERAL,    value: parseInt(arg) };
 }
 
 function buildInstruction(
@@ -196,29 +199,38 @@ export class VM {
   public activeInstructionPos: number = 0;
 
   public registerMemoryLimit: number;
+  public machineMemoryLimit: number;
   public callStackLimit: number;
   public heapLimit: number;
 
   public registerMemory: RegValue[];
+  public machineMemory: RegValue[];
 
   public runFastFlag: boolean = false;
 
   private peripherals: Map<string, PeripheralHandler> = new Map();
 
   /**
-   * @param registerMemoryLimit  Number of r-registers  (e.g. 8 → r0–r7)
+   * @param registerMemoryLimit  Number of r-registers  (e.g. 8  → r0–r7)
+   * @param machineMemoryLimit   Number of x-registers  (e.g. 16 → x0–x15)
    * @param callStackLimit       Max call stack depth    (e.g. 256)
-   * @param heapLimit            Total byte budget across all registers
+   * @param heapLimit            Total byte budget across ALL registers (r + x)
    */
   constructor(
     registerMemoryLimit: number,
+    machineMemoryLimit: number,
     callStackLimit: number,
     heapLimit: number,
   ) {
     this.registerMemoryLimit = registerMemoryLimit;
-    this.callStackLimit = callStackLimit;
-    this.heapLimit = heapLimit;
+    this.machineMemoryLimit  = machineMemoryLimit;
+    this.callStackLimit      = callStackLimit;
+    this.heapLimit           = heapLimit;
     this.registerMemory = Array.from({ length: registerMemoryLimit }, () => ({
+      tag: "int" as const,
+      data: 0,
+    }));
+    this.machineMemory = Array.from({ length: machineMemoryLimit }, () => ({
       tag: "int" as const,
       data: 0,
     }));
@@ -242,7 +254,10 @@ export class VM {
   // -------------------------------------------------------------------
 
   private totalHeapUsed(): number {
-    return this.registerMemory.reduce((sum, v) => sum + byteSize(v), 0);
+    return (
+      this.registerMemory.reduce((sum, v) => sum + byteSize(v), 0) +
+      this.machineMemory.reduce((sum, v) => sum + byteSize(v), 0)
+    );
   }
 
   public heapUsed(): number {
@@ -258,18 +273,27 @@ export class VM {
   // -------------------------------------------------------------------
 
   public setMemory(data: number | string | number[], dest: Argument): void {
-    if (dest.type !== ArgType.REGISTER) {
+    if (dest.type === ArgType.REGISTER) {
+      const idx = dest.value as number;
+      if (idx >= this.registerMemoryLimit || idx < 0)
+        throw Error("Outside register memory bounds!");
+      this._writeSlot(this.registerMemory, idx, data);
+    } else if (dest.type === ArgType.MACHINE) {
+      const idx = dest.value as number;
+      if (idx >= this.machineMemoryLimit || idx < 0)
+        throw Error("Outside machine memory bounds!");
+      this._writeSlot(this.machineMemory, idx, data);
+    } else {
       throw Error(
         dest.type === ArgType.LITERAL
           ? `Memory destination cannot be a LITERAL at line: ${this.activeInstructionPos + 1}`
           : `Illegal memory destination at line: ${this.activeInstructionPos + 1}`,
       );
     }
+  }
 
-    const idx = dest.value as number;
-    if (idx >= this.registerMemoryLimit || idx < 0)
-      throw Error("Outside register memory bounds!");
-
+  /** Internal: write a value into a slot of either register or machine memory array, enforcing heap. */
+  private _writeSlot(mem: RegValue[], idx: number, data: number | string | number[]): void {
     const newVal: RegValue =
       typeof data === "string"
         ? { tag: "string", data }
@@ -277,26 +301,32 @@ export class VM {
           ? { tag: "array", data }
           : { tag: "int", data };
 
-    const delta = byteSize(newVal) - byteSize(this.registerMemory[idx]);
+    const delta = byteSize(newVal) - byteSize(mem[idx]);
     if (this.totalHeapUsed() + delta > this.heapLimit) {
       throw Error(
         `Heap overflow! Need ${delta} more bytes but only ${this.heapAvailable()} available.`,
       );
     }
 
-    this.registerMemory[idx] = newVal;
+    mem[idx] = newVal;
   }
 
   /** Reads any value (number, string, or array) from any argument type. */
   public fetchValue(arg: Argument): number | string | number[] {
-    if (arg.type === ArgType.LITERAL) return arg.value as number;
-    if (arg.type === ArgType.STRING) return arg.value as string;
-    if (arg.type === ArgType.ARRAY) return arg.value as number[];
+    if (arg.type === ArgType.LITERAL)  return arg.value as number;
+    if (arg.type === ArgType.STRING)   return arg.value as string;
+    if (arg.type === ArgType.ARRAY)    return arg.value as number[];
     if (arg.type === ArgType.REGISTER) {
       const idx = arg.value as number;
       if (idx >= this.registerMemoryLimit || idx < 0)
         throw Error("Outside register memory bounds!");
       return this.registerMemory[idx].data;
+    }
+    if (arg.type === ArgType.MACHINE) {
+      const idx = arg.value as number;
+      if (idx >= this.machineMemoryLimit || idx < 0)
+        throw Error("Outside machine memory bounds!");
+      return this.machineMemory[idx].data;
     }
     throw Error(
       `Empty or illegal memory fetch at line: ${this.activeInstructionPos + 1}`,
@@ -338,11 +368,12 @@ export class VM {
   // Serialisation
   // -------------------------------------------------------------------
 
-  /** Format: ip|registers_json|callstack|output_json|instructions_json */
+  /** Format: ip|registers_json|machine_json|callstack|output_json|instructions_json */
   public saveState(): string {
     return [
       this.activeInstructionPos,
       JSON.stringify(this.registerMemory),
+      JSON.stringify(this.machineMemory),
       Array.from(this.callStack.slice(0, this.stackPointer)).join(","),
       JSON.stringify(this.outputBuffer),
       JSON.stringify(this.instructions),
@@ -352,28 +383,29 @@ export class VM {
   public loadState(state: string): void {
     const parts: string[] = [];
     let remaining = state;
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
       const idx = remaining.indexOf("|");
       if (idx === -1) throw Error("Invalid savestate format");
       parts.push(remaining.slice(0, idx));
       remaining = remaining.slice(idx + 1);
     }
     parts.push(remaining);
-    if (parts.length !== 5) throw Error("Invalid savestate format");
+    if (parts.length !== 6) throw Error("Invalid savestate format");
 
     this.activeInstructionPos = parseInt(parts[0]);
-    this.registerMemory = JSON.parse(parts[1]);
+    this.registerMemory       = JSON.parse(parts[1]);
+    this.machineMemory        = JSON.parse(parts[2]);
 
     this.callStack.fill(0);
     this.stackPointer = 0;
-    if (parts[2]) {
-      const vals = parts[2].split(",").map(Number);
+    if (parts[3]) {
+      const vals = parts[3].split(",").map(Number);
       this.stackPointer = vals.length;
       vals.forEach((v, i) => (this.callStack[i] = v));
     }
 
-    this.outputBuffer = JSON.parse(parts[3]);
-    this.instructions = JSON.parse(parts[4]);
+    this.outputBuffer = JSON.parse(parts[4]);
+    this.instructions = JSON.parse(parts[5]);
   }
 
   // -------------------------------------------------------------------
@@ -383,8 +415,9 @@ export class VM {
   /**
    * Pass 0 — resolve $name declarations.
    *
-   *   $name = r2     explicit register
-   *   $name = auto   next available register
+   *   $name = r2     explicit register (r-bank)
+   *   $name = x4     explicit machine register (x-bank)
+   *   $name = auto   next available r-register
    *
    * Declaration lines are stripped. All $name occurrences in remaining
    * lines are replaced with their register string. Longest names are
@@ -406,6 +439,7 @@ export class VM {
           vars.set(varName, `r${autoCounter++}`);
         } else {
           vars.set(varName, target);
+          // Only advance autoCounter for r-bank explicit assignments
           if (target.startsWith("r")) {
             const idx = parseInt(target.slice(1));
             if (!isNaN(idx) && idx >= autoCounter) autoCounter = idx + 1;

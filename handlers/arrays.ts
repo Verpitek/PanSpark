@@ -1,4 +1,4 @@
-import { Instruction, VM, Argument } from "../panspark";
+import { Instruction, VM, Argument, ArgType } from "../panspark";
 
 function getArray(vm: VM, arg: Argument): number[] {
   const val = vm.fetchValue(arg);
@@ -6,9 +6,11 @@ function getArray(vm: VM, arg: Argument): number[] {
   return val;
 }
 
-function updateArray(vm: VM, regIdx: number, newArray: number[]): void {
-  const oldVal = vm.registerMemory[regIdx];
-  if (oldVal.tag !== "array") throw Error(`Register r${regIdx} is not an array`);
+function updateArray(vm: VM, arg: Argument, newArray: number[]): void {
+  const mem = arg.type === ArgType.MACHINE ? vm.machineMemory : vm.registerMemory;
+  const idx = arg.value as number;
+  const oldVal = mem[idx];
+  if (oldVal.tag !== "array") throw Error(`Register is not an array at line: ${vm.activeInstructionPos + 1}`);
   const oldSize = oldVal.data.length * 2;
   const newSize = newArray.length * 2;
   const delta = newSize - oldSize;
@@ -29,16 +31,14 @@ export function handleArrPush(vm: VM, instruction: Instruction): void {
   const arr = getArray(vm, instruction.arguments[0]);
   const val = vm.fetchMemory(instruction.arguments[1]);
   const newArr = [...arr, val];
-  const regIdx = (instruction.arguments[0].value as number);
-  updateArray(vm, regIdx, newArr);
+  updateArray(vm, instruction.arguments[0], newArr);
 }
 
 export function handleArrPop(vm: VM, instruction: Instruction): void {
   const arr = getArray(vm, instruction.arguments[0]);
   const popped = arr.length > 0 ? arr[arr.length - 1] : 0;
   const newArr = arr.slice(0, -1);
-  const regIdx = (instruction.arguments[0].value as number);
-  updateArray(vm, regIdx, newArr);
+  updateArray(vm, instruction.arguments[0], newArr);
   vm.setMemory(popped, instruction.arguments[1]);
 }
 
@@ -56,8 +56,7 @@ export function handleArrSet(vm: VM, instruction: Instruction): void {
   const val = vm.fetchMemory(instruction.arguments[2]);
   const newArr = [...arr];
   newArr[idx] = val;
-  const regIdx = (instruction.arguments[0].value as number);
-  updateArray(vm, regIdx, newArr);
+  updateArray(vm, instruction.arguments[0], newArr);
 }
 
 export function handleArrLen(vm: VM, instruction: Instruction): void {
@@ -68,6 +67,5 @@ export function handleArrLen(vm: VM, instruction: Instruction): void {
 export function handleArrSort(vm: VM, instruction: Instruction): void {
   const arr = getArray(vm, instruction.arguments[0]);
   const newArr = [...arr].sort((a, b) => a - b);
-  const regIdx = (instruction.arguments[0].value as number);
-  updateArray(vm, regIdx, newArr);
+  updateArray(vm, instruction.arguments[0], newArr);
 }
