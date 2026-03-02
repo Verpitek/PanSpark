@@ -14,6 +14,7 @@ PanSpark is a low-level, assembly-like language designed for a custom virtual ma
 9. [State Persistence](#state-persistence)
 10. [Examples](#examples)
 11. [VM API Reference](#vm-api-reference)
+12. [MCU Mode (Microcontroller)](#mcu-mode-microcontroller)
 
 ---
 
@@ -541,3 +542,47 @@ const vm = new VM(8, 16, 256, 1280);
 | `Argument` | `{ type: ArgType, value: number \| string \| number[] }` |
 | `RegValue` | `{ tag: "int", data: number } \| { tag: "string", data: string } \| { tag: "array", data: number[] }` |
 | `PeripheralHandler` | `(vm: VM, args: Argument[]) => void` |
+
+---
+
+## MCU Mode (Microcontroller)
+
+The editor includes an MCU simulation mode that mirrors how the in-game Microcontroller block works. The MCU has 4 analog redstone inputs and 4 digital redstone outputs, one per side (FRONT, BACK, LEFT, RIGHT).
+
+### Register Mapping
+
+| Side | Output register | Input register |
+| :--- | :--- | :--- |
+| FRONT | `x0` | `x4` |
+| BACK | `x1` | `x5` |
+| LEFT | `x2` | `x6` |
+| RIGHT | `x3` | `x7` |
+
+- **Inputs (x4–x7):** Analog, 0–15. Set via the number fields at the bottom of the MCU view. The wire glow scales with the input level.
+- **Outputs (x0–x3):** Digital. `0` = OFF, any value `≥ 1` = full ON (maximum redstone signal strength). The script writes to these registers to control output.
+
+### Wire Glow
+
+Each side has one wire that reflects both input and output state:
+
+- If the output register for that side is `≥ 1`, the wire shows full bright glow (output takes priority).
+- If the output is `0`, the wire shows the analog input glow — dark at 0, scaling up to full brightness at 15.
+
+### Speed
+
+When using **REALTIME** speed, the VM runs at 1 instruction per 50 ms (20 ops/second), matching the Microcontroller's in-game tick rate.
+
+### Example
+
+```arm
+// Read FRONT input (x4). If signal strength > 7, turn on FRONT output (x0).
+
+POINT loop
+  IF x4 > 7 >> on
+  SET 0 >> x0
+  JUMP loop
+
+POINT on
+  SET 1 >> x0
+  JUMP loop
+```
