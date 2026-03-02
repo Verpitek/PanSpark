@@ -1,12 +1,10 @@
 import { VM } from "./panspark";
 
 const code = `
-SET 10 >> r0
-SET 2.2 >> r3
-PRINT r3
+  PRINT "kebabas"
 `;
 
-const vm = new VM(8, 8, 1280);
+const vm = new VM(16, 16, 128, 1280);
 
 vm.registerPeripheral("MATH_FAC", (vm, args) => {
   const n = vm.fetchMemory(args[0]);
