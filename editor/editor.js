@@ -1,4 +1,4 @@
-import { VM } from '../panspark.js';
+import { VM } from '../dist/panspark.js';
 
 // ════════════════════════════════════════════════════════
 // DOCS
