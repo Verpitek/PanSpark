@@ -64,6 +64,21 @@ export enum OpCode {
   ARR_SORT,
   // internal — dispatches to a registered peripheral handler
   PERIPHERAL,
+  // bitwise
+  AND,
+  OR,
+  XOR,
+  NOT,
+  SHL,
+  SHR,
+  // indirect addressing
+  LOAD,
+  STORE,
+  // loop blocks (compiler sugar — compile to IF/JUMP/POINT)
+  WHILE,
+  FOR,
+  BREAK,
+  CONTINUE,
 }
 
 export enum ArgType {
@@ -195,6 +210,13 @@ const expectedArgCount: Partial<Record<OpCode, number>> = {
   [OpCode.ARR_NEW]: 2, [OpCode.ARR_PUSH]: 2, [OpCode.ARR_POP]: 2,
   [OpCode.ARR_GET]: 3, [OpCode.ARR_SET]: 3,
   [OpCode.ARR_LEN]: 2, [OpCode.ARR_SORT]: 1,
+  // bitwise
+  [OpCode.AND]: 3, [OpCode.OR]: 3, [OpCode.XOR]: 3,
+  [OpCode.SHL]: 3, [OpCode.SHR]: 3, [OpCode.NOT]: 2,
+  // indirect
+  [OpCode.LOAD]: 2, [OpCode.STORE]: 2,
+  // loops (compiler sugar — not emitted as runtime instructions)
+  [OpCode.WHILE]: 3, [OpCode.FOR]: 2, [OpCode.BREAK]: 0, [OpCode.CONTINUE]: 0,
 };
 
 function buildInstruction(
