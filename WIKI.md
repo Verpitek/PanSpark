@@ -136,12 +136,25 @@ After variable resolution, the compiler sees plain `x0`, `x1`, `r0`, `r1` — id
 
 ## Operation Reference
 
+### Control Flow
+
+| OpCode | Syntax | Description |
+| :--- | :--- | :--- |
+| **JUMP** | `JUMP <label>` | Unconditional jump to label |
+| **IF** (jump-style) | `IF v1 op v2 >> label [ELSE label]` | Conditional jump based on comparison |
+| **IF** (block-style) | `IF v1 op v2 ... END` | Block-style conditional; executes body when true |
+| **ELSE** | `ELSE` | Marks the else-branch inside a block-style IF |
+| **END** | `END` | Closes a block-style IF block |
+| **UNTIL** | `UNTIL v1 op v2` | Blocks execution until condition becomes true |
+| **CALL** | `CALL <label>` | Push return address, jump to label |
+| **RET** | `RET` | Pop return address, jump back |
+
 ### Basic Operations
 
 | OpCode | Syntax | Description |
 | :--- | :--- | :--- |
 | **SET** | `SET <val> >> <dest>` | Stores a value into a register. `val` can be a literal, string, array, or any register (r or x). |
-| **PRINT** | `PRINT <val>` | Pushes the value to the output buffer. Supports integers, strings, and arrays. |
+| **PRINT** | `PRINT <val>` | Pushes the value to the output buffer. Supports integers, strings, and arrays (arrays are printed as JSON, e.g. `"[1,2,3]"`). |
 | **NOP** | `NOP` | No Operation. |
 | **HALT** | `HALT` | Immediately stops execution. |
 
@@ -198,7 +211,7 @@ Arrays are first-class values of type `number[]`. They can be stored in any r- o
 JUMP <label>
 ```
 
-### Conditional Jumps (IF)
+### Conditional Jumps — Jump-Style (IF)
 
 ```
 IF <val1> <op> <val2> >> <label_true>
@@ -212,6 +225,39 @@ IF <val1> <op> <val2> >> <label_true> ELSE <label_false>
 - Both r- and x-registers can appear on either side.
 
 If the condition is true, execution jumps to `label_true`. If the condition is false and an `ELSE` clause is provided, execution jumps to `label_false`; otherwise execution falls through to the next instruction.
+
+### Conditional Blocks — Block-Style (IF / ELSE / END)
+
+Instead of jumping to labels, you can use block-style conditionals that look more like traditional structured programming:
+
+```
+IF <val1> <op> <val2>
+  // instructions executed when condition is TRUE
+ELSE
+  // instructions executed when condition is FALSE
+END
+```
+
+The `ELSE` clause is optional. Blocks can be nested up to `maxBlockDepth` levels (default 16).
+
+```arm
+SET 5 >> r0
+IF r0 > 3
+  PRINT "greater than 3"
+  IF r0 > 4
+    PRINT "also greater than 4"
+  ELSE
+    PRINT "not greater than 4"
+  END
+ELSE
+  PRINT "3 or less"
+END
+HALT
+```
+
+**How it works at runtime:** When a block-style `IF` is encountered, the VM pushes a condition result onto an internal `ifBlockStack`. Every subsequent instruction is gated by `shouldExecute()`, which checks whether all active blocks permit execution. `ELSE` flips the `inElseBranch` flag for the top block. `END` pops the block off the stack.
+
+**Jump scoping:** `JUMP` and jump-style `IF` cannot cross IF block boundaries. Attempting to jump from inside a block to a label outside (or vice versa) throws an error. `CALL` and `RET` are exempt from this restriction — they use the call stack and can cross block boundaries freely.
 
 ### Blocking Wait (UNTIL)
 
@@ -307,6 +353,8 @@ for (const _ of vm2.run()) {}
 - Call stack
 - Output buffer
 - Compiled instructions (including peripheral names)
+- IF block stack state
+- Instruction block depth map (for jump validation after restore)
 
 **What does not survive:**
 - Peripheral handler functions — they are code, not data
@@ -352,7 +400,31 @@ POINT done
   RET
 ```
 
-### 3. Simple Loop
+### 3. Block-Style IF / ELSE / END
+
+```arm
+$score = r0
+
+SET 85 >> $score
+
+IF $score >= 90
+  PRINT "A"
+ELSE
+  IF $score >= 80
+    PRINT "B"
+  ELSE
+    IF $score >= 70
+      PRINT "C"
+    ELSE
+      PRINT "F"
+    END
+  END
+END
+
+HALT
+```
+
+### 4. Simple Loop
 
 ```arm
 $counter = auto
@@ -368,7 +440,7 @@ POINT loop
   HALT
 ```
 
-### 4. Array Operations Example
+### 5. Array Operations Example
 
 ```arm
 $arr   = auto
@@ -398,7 +470,7 @@ PRINT "sum > 100"
 HALT
 ```
 
-### 5. Machine Monitor (x-registers)
+### 6. Machine Monitor (x-registers)
 
 ```arm
 // x0–x2 are peripheral-mapped: written by the host each tick
@@ -436,7 +508,7 @@ POINT done
   HALT
 ```
 
-### 6. String-Based Item Router
+### 7. String-Based Item Router
 
 ```arm
 // x0 = item type written by conveyor peripheral
@@ -469,7 +541,7 @@ POINT send
   JUMP main
 ```
 
-### 7. Custom OpCode Factorial
+### 8. Custom OpCode Factorial
 
 ```typescript
 vm.registerPeripheral("MATH_FAC", (vm, args) => {
@@ -499,17 +571,20 @@ HALT
 ```typescript
 import { VM } from "./panspark";
 
-// r-registers, x-registers, call stack depth, heap limit (bytes)
+// r-registers, x-registers, call stack depth, heap limit (bytes), max IF block depth (default 16)
 const vm = new VM(8, 16, 256, 1280);
+
+// Custom IF nesting limit (e.g. allow up to 32 levels)
+const vm2 = new VM(8, 16, 256, 1280, 32);
 ```
 
 ### Core Methods
 
 | Method | Returns | Description |
 | :--- | :--- | :--- |
-| `compile(source)` | `Instruction[]` | Resolves `$vars`, strips comments, compiles to instructions |
-| `run()` | `Generator<void>` | Executes instructions, yields after each |
-| `saveState()` | `string` | Serializes full VM state (both register banks) |
+| `compile(source)` | `Generator<Instruction>` | Resolves `$vars`, strips comments, compiles to instructions (generator — iterate to consume) |
+| `run()` | `Generator<void>` | Executes instructions, yields after each step |
+| `saveState()` | `string` | Serializes full VM state (both register banks, call stack, IF block stack, instruction depths) |
 | `loadState(state)` | `void` | Restores VM from serialized state |
 | `registerPeripheral(name, fn)` | `void` | Registers a custom opcode handler |
 | `unregisterPeripheral(name)` | `void` | Removes a custom opcode handler |
@@ -518,6 +593,8 @@ const vm = new VM(8, 16, 256, 1280);
 | `fetchValue(arg)` | `number \| string \| number[]` | Reads any value type from r- or x-register |
 | `heapAvailable()` | `number` | Remaining heap bytes across both banks |
 | `heapUsed()` | `number` | Consumed heap bytes across both banks |
+| `pushCallStack(addr)` | `void` | Pushes a return address onto the call stack (throws on overflow) |
+| `popCallStack()` | `number` | Pops and returns a return address (throws on underflow) |
 
 ### Public Fields
 
@@ -527,17 +604,23 @@ const vm = new VM(8, 16, 256, 1280);
 | `machineMemory` | `RegValue[]` | x-register values |
 | `registerMemoryLimit` | `number` | Number of r-registers |
 | `machineMemoryLimit` | `number` | Number of x-registers |
+| `callStackLimit` | `number` | Max call stack depth |
+| `maxBlockDepth` | `number` | Max IF block nesting depth (default 16) |
 | `heapLimit` | `number` | Total heap budget in bytes |
+| `runFastFlag` | `boolean` | When `true`, `run()` skips per-instruction yields and keeps output buffer (batch mode) |
 | `activeInstructionPos` | `number` | Current instruction pointer |
 | `stackPointer` | `number` | Current call stack depth |
 | `outputBuffer` | `(number \| string)[]` | Cleared each step; holds `PRINT` output |
+| `instructions` | `Instruction[]` | Compiled instruction list |
+| `callStack` | `Int16Array` | The raw call stack array |
+| `ifBlockStack` | `IfBlockState[]` | Runtime IF block tracking stack |
 
 ### Enums and Types
 
 | Name | Description |
 | :--- | :--- |
 | `OpCode` | All built-in operations plus `PERIPHERAL` for custom dispatch |
-| `ArgType` | `LITERAL`, `REGISTER`, `MACHINE`, `STRING`, `ARRAY`, comparison operators |
+| `ArgType` | `LITERAL`, `REGISTER`, `MACHINE`, `STRING`, `ARRAY`, `LABEL`, comparison operators (`EQUAL`, `NOTEQUAL`, `LESS`, `GREATER`, `LESSEQUAL`, `GREATEQUAL`) |
 | `Instruction` | `{ operation, arguments, line, peripheralName? }` |
 | `Argument` | `{ type: ArgType, value: number \| string \| number[] }` |
 | `RegValue` | `{ tag: "int", data: number } \| { tag: "string", data: string } \| { tag: "array", data: number[] }` |

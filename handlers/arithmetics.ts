@@ -10,7 +10,7 @@ export function handleMul(vm: VM, instruction: Instruction): void {
 export function handleDiv(vm: VM, instruction: Instruction): void {
   const divisor = vm.fetchMemory(instruction.arguments[1]);
   if (divisor === 0) throw Error(`Division by zero at line: ${vm.activeInstructionPos + 1}`);
-  vm.setMemory(vm.fetchMemory(instruction.arguments[0]) / divisor, instruction.arguments[2]);
+  vm.setMemory(Math.trunc(vm.fetchMemory(instruction.arguments[0]) / divisor), instruction.arguments[2]);
 }
 
 export function handleMod(vm: VM, instruction: Instruction): void {
@@ -20,14 +20,15 @@ export function handleMod(vm: VM, instruction: Instruction): void {
 }
 
 export function handleSqrt(vm: VM, instruction: Instruction): void {
-  vm.setMemory(Math.sqrt(vm.fetchMemory(instruction.arguments[0])), instruction.arguments[1]);
+  const val = vm.fetchMemory(instruction.arguments[0]);
+  if (val < 0) throw Error(`SQRT of negative number at line: ${vm.activeInstructionPos + 1}`);
+  vm.setMemory(Math.trunc(Math.sqrt(val)), instruction.arguments[1]);
 }
 
 export function handlePow(vm: VM, instruction: Instruction): void {
-  vm.setMemory(
-    Math.pow(vm.fetchMemory(instruction.arguments[0]), vm.fetchMemory(instruction.arguments[1])),
-    instruction.arguments[2],
-  );
+  const result = Math.pow(vm.fetchMemory(instruction.arguments[0]), vm.fetchMemory(instruction.arguments[1]));
+  if (!isFinite(result)) throw Error(`POW produced ${result} at line: ${vm.activeInstructionPos + 1}`);
+  vm.setMemory(Math.trunc(result), instruction.arguments[2]);
 }
 
 export function handleAbs(vm: VM, instruction: Instruction): void {

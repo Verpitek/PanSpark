@@ -161,10 +161,16 @@ function parseArgument(arg: string): Argument {
     if (elements.some(isNaN)) throw Error(`Invalid array literal: ${arg}`);
     return { type: ArgType.ARRAY, value: elements };
   }
-  if (arg.startsWith("r"))
-    return { type: ArgType.REGISTER, value: parseInt(arg.slice(1)) };
-  if (arg.startsWith("x"))
-    return { type: ArgType.MACHINE, value: parseInt(arg.slice(1)) };
+  if (arg.startsWith("r")) {
+    const idx = parseInt(arg.slice(1));
+    if (isNaN(idx)) return { type: ArgType.LITERAL, value: parseInt(arg) };
+    return { type: ArgType.REGISTER, value: idx };
+  }
+  if (arg.startsWith("x")) {
+    const idx = parseInt(arg.slice(1));
+    if (isNaN(idx)) return { type: ArgType.LITERAL, value: parseInt(arg) };
+    return { type: ArgType.MACHINE, value: idx };
+  }
   if (arg === "==") return { type: ArgType.EQUAL, value: 0 };
   if (arg === "!=") return { type: ArgType.NOTEQUAL, value: 0 };
   if (arg === "<") return { type: ArgType.LESS, value: 0 };
@@ -173,6 +179,23 @@ function parseArgument(arg: string): Argument {
   if (arg === ">=") return { type: ArgType.GREATEQUAL, value: 0 };
   return { type: ArgType.LITERAL, value: parseInt(arg) };
 }
+
+const expectedArgCount: Partial<Record<OpCode, number>> = {
+  [OpCode.SET]: 2,
+  [OpCode.ADD]: 3, [OpCode.SUB]: 3, [OpCode.MUL]: 3, [OpCode.DIV]: 3,
+  [OpCode.MOD]: 3, [OpCode.POW]: 3, [OpCode.MIN]: 3, [OpCode.MAX]: 3,
+  [OpCode.SQRT]: 2, [OpCode.ABS]: 2,
+  [OpCode.PRINT]: 1,
+  [OpCode.JUMP]: 1, [OpCode.CALL]: 1, [OpCode.POINT]: 1,
+  [OpCode.UNTIL]: 3,
+  [OpCode.INC]: 1, [OpCode.DEC]: 1,
+  [OpCode.RNG]: 3,
+  [OpCode.NOP]: 0, [OpCode.HALT]: 0, [OpCode.RET]: 0,
+  [OpCode.ELSE]: 0, [OpCode.END]: 0,
+  [OpCode.ARR_NEW]: 2, [OpCode.ARR_PUSH]: 2, [OpCode.ARR_POP]: 2,
+  [OpCode.ARR_GET]: 3, [OpCode.ARR_SET]: 3,
+  [OpCode.ARR_LEN]: 2, [OpCode.ARR_SORT]: 1,
+};
 
 function buildInstruction(
   operation: OpCode,
@@ -184,6 +207,12 @@ function buildInstruction(
   for (let i = 1; i < tokens.length; i++) {
     if (tokens[i] !== ">>" && tokens[i] !== "ELSE" && tokens[i] !== "END")
       argArr.push(parseArgument(tokens[i]));
+  }
+  const expected = expectedArgCount[operation];
+  if (expected !== undefined && argArr.length !== expected) {
+    throw Error(
+      `${OpCode[operation]} expects ${expected} argument(s) but got ${argArr.length} at line ${line + 1}`,
+    );
   }
   return { operation, arguments: argArr, line, peripheralName };
 }
@@ -397,8 +426,15 @@ export class VM {
    * Prevents jumping out of IF blocks.
    */
   private validateJumpTarget(targetPos: number, currentPos: number): void {
-    const currentDepth = this.instructionBlockDepth[currentPos] || 0;
-    const targetDepth = this.instructionBlockDepth[targetPos] || 0;
+    if (currentPos < 0 || currentPos >= this.instructionBlockDepth.length) {
+      throw Error(`Invalid instruction position: ${currentPos}`);
+    }
+    if (targetPos < 0 || targetPos >= this.instructionBlockDepth.length) {
+      throw Error(`Invalid jump target: ${targetPos}`);
+    }
+    
+    const currentDepth = this.instructionBlockDepth[currentPos];
+    const targetDepth = this.instructionBlockDepth[targetPos];
     
     // Cannot jump to a position with different block depth
     if (currentDepth !== targetDepth) {
@@ -411,45 +447,36 @@ export class VM {
   // -------------------------------------------------------------------
   // Serialisation
   // -------------------------------------------------------------------
-  /** Format: ip|registers_json|machine_json|callstack|output_json|instructions_json|ifstack_json */
   public saveState(): string {
-    return [
-      this.activeInstructionPos,
-      JSON.stringify(this.registerMemory),
-      JSON.stringify(this.machineMemory),
-      Array.from(this.callStack.slice(0, this.stackPointer)).join(","),
-      JSON.stringify(this.outputBuffer),
-      JSON.stringify(this.instructions),
-      JSON.stringify(this.ifBlockStack),
-    ].join("|");
+    return JSON.stringify({
+      ip: this.activeInstructionPos,
+      registers: this.registerMemory,
+      machines: this.machineMemory,
+      callStack: Array.from(this.callStack.slice(0, this.stackPointer)),
+      output: this.outputBuffer,
+      instructions: this.instructions,
+      ifStack: this.ifBlockStack,
+      blockDepth: this.instructionBlockDepth,
+    });
   }
 
   public loadState(state: string): void {
-    const parts: string[] = [];
-    let remaining = state;
-    for (let i = 0; i < 7; i++) {
-      const idx = remaining.indexOf("|");
-      if (idx === -1) throw Error("Invalid savestate format");
-      parts.push(remaining.slice(0, idx));
-      remaining = remaining.slice(idx + 1);
-    }
-    parts.push(remaining);
-    if (parts.length !== 8) throw Error("Invalid savestate format");
-    this.activeInstructionPos = parseInt(parts[0]);
-    this.registerMemory = JSON.parse(parts[1]);
-    this.machineMemory = JSON.parse(parts[2]);
+    const s = JSON.parse(state);
+    this.activeInstructionPos = s.ip;
+    this.registerMemory = s.registers;
+    this.machineMemory = s.machines;
 
     this.callStack.fill(0);
     this.stackPointer = 0;
-    if (parts[3]) {
-      const vals = parts[3].split(",").map(Number);
-      this.stackPointer = vals.length;
-      vals.forEach((v, i) => (this.callStack[i] = v));
+    if (s.callStack && s.callStack.length > 0) {
+      this.stackPointer = s.callStack.length;
+      s.callStack.forEach((v: number, i: number) => (this.callStack[i] = v));
     }
 
-    this.outputBuffer = JSON.parse(parts[4]);
-    this.instructions = JSON.parse(parts[5]);
-    this.ifBlockStack = JSON.parse(parts[6]);
+    this.outputBuffer = s.output;
+    this.instructions = s.instructions;
+    this.ifBlockStack = s.ifStack;
+    this.instructionBlockDepth = s.blockDepth;
   }
 
   // -------------------------------------------------------------------
@@ -600,16 +627,31 @@ export class VM {
           resolveAt(1);
           instruction = buildInstruction(OpCode.CALL, toks, i);
           break;
-        // IF  <v1 >  <op >  <v2 >
-        case "IF":
-          if (blockStack.length >= this.maxBlockDepth) {
-            throw Error(
-              `IF nesting exceeds limit of ${this.maxBlockDepth} at line ${i}`,
-            );
+        // IF  <v1 >  <op >  <v2 >  [>> label [ELSE label]]
+        case "IF": {
+          const isJumpStyle = toks.includes(">>");
+          if (isJumpStyle) {
+            // Jump-style: IF val op val >> label [ELSE label]
+            // Resolve label targets
+            const arrowIdx = toks.indexOf(">>");
+            resolveAt(arrowIdx + 1);
+            const elseIdx = toks.indexOf("ELSE");
+            if (elseIdx !== -1) {
+              if (elseIdx + 1 >= toks.length) throw Error(`Missing label after ELSE at line ${i}`);
+              resolveAt(elseIdx + 1);
+            }
+          } else {
+            // Block-style: IF val op val ... END
+            if (blockStack.length >= this.maxBlockDepth) {
+              throw Error(
+                `IF nesting exceeds limit of ${this.maxBlockDepth} at line ${i}`,
+              );
+            }
+            blockStack.push({ type: "IF", startLine: i });
           }
-          blockStack.push({ type: "IF", startLine: i });
           instruction = buildInstruction(OpCode.IF, toks, i);
           break;
+        }
 
         // MUL  <a >  <b >  > >  <dest >
         case "MUL":
@@ -730,9 +772,10 @@ export class VM {
   // Execution
   // -------------------------------------------------------------------
   public *run() {
+    if (this.runFastFlag) this.outputBuffer = [];
     while (this.activeInstructionPos < this.instructions.length) {
       let ipModified = false;
-      this.outputBuffer = [];
+      if (!this.runFastFlag) this.outputBuffer = [];
       const instr = this.instructions[this.activeInstructionPos];
 
       // Check if we should execute this instruction based on IF block state
@@ -781,15 +824,36 @@ export class VM {
         case OpCode.POINT:
           break;
 
-        // Conditional block start: evaluate condition and push to stack
-        case OpCode.IF:
-          const condition = handleIf(this, instr);
-          this.ifBlockStack.push({
-            conditionResult: condition,
-            inElseBranch: false,
-            startLine: instr.line,
-          });
+        // Conditional: jump-style (4-5 args) or block-style (3 args)
+        case OpCode.IF: {
+          const isJumpStyle = instr.arguments.length > 3;
+          if (isJumpStyle) {
+            // Jump-style IF
+            if (shouldExec) {
+              const condition = handleIf(this, instr);
+              if (condition) {
+                const targetPos = instr.arguments[3].value as number;
+                this.validateJumpTarget(targetPos, this.activeInstructionPos);
+                this.activeInstructionPos = targetPos;
+                ipModified = true;
+              } else if (instr.arguments.length >= 5) {
+                const elsePos = instr.arguments[4].value as number;
+                this.validateJumpTarget(elsePos, this.activeInstructionPos);
+                this.activeInstructionPos = elsePos;
+                ipModified = true;
+              }
+            }
+          } else {
+            // Block-style IF
+            const condition = handleIf(this, instr);
+            this.ifBlockStack.push({
+              conditionResult: condition,
+              inElseBranch: false,
+              startLine: instr.line,
+            });
+          }
           break;
+        }
 
         // ELSE branch marker: switch to else branch in current IF block
         case OpCode.ELSE:
@@ -866,7 +930,6 @@ export class VM {
         case OpCode.CALL:
           if (shouldExec) {
             const targetPos = instr.arguments[0].value as number;
-            this.validateJumpTarget(targetPos, this.activeInstructionPos);
             this.pushCallStack(this.activeInstructionPos + 1);
             this.activeInstructionPos = targetPos;
             ipModified = true;
