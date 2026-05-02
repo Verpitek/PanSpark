@@ -1,3 +1,5 @@
+<img src="https://verpitek.com/panspark.png" width="256">
+
 # PanSpark VM
 A lightweight assembly-like virtual machine designed for embedded simulation, peripheral scripting, and low-level programming experiments. Built for LunaTech.
 
