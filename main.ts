@@ -1,37 +1,44 @@
 import { VM } from "./panspark";
 
-// Example code demonstrating new IF block syntax
 const code = `
-// Simple IF without ELSE
-SET 10 >> r0
-IF r0 > 5
-    PRINT "r0 is greater than 5"
-END
+$sum     = r0
+$counter = r1
+$fac     = r2
+$n       = r3
+$result  = r4
 
-// IF with ELSE
-SET 3 >> r1
-IF r1 > 5
-    PRINT "r1 is greater than 5"
-ELSE
-    PRINT "r1 is not greater than 5"
-END
+POINT main
+  SET 0 >> $sum
+  SET 10 >> $counter
 
-// Nested IF blocks
-SET 7 >> r2
-IF r2 > 0
-    PRINT "r2 is positive"
-    IF r2 < 10
-        PRINT "r2 is between 0 and 10"
-    END
-END
+POINT loop
+  ADD $sum $counter >> $sum
+  DEC $counter
+  IF $counter > 0 >> loop
 
-// String comparison
-SET "hello" >> r3
-IF r3 == "hello"
-    PRINT "String matches!"
-ELSE
-    PRINT "String does not match"
-END
+  PRINT "sum 1..10:"
+  PRINT $sum
+
+  SET 5 >> $n
+  SET 1 >> $fac
+  CALL factorial
+  PRINT "5! :"
+  PRINT $fac
+
+  SET 7 >> $n
+  MATH_FAC $n >> $result
+  PRINT "MATH_FAC 7:"
+  PRINT $result
+  HALT
+
+POINT factorial
+  IF $n == 0 >> done
+  MUL $fac $n >> $fac
+  DEC $n
+  CALL factorial
+
+POINT done
+  RET
 `;
 
 const vm = new VM(16, 16, 128, 1280, 16);
