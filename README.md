@@ -4,13 +4,13 @@
 A lightweight assembly-like virtual machine designed for embedded simulation, peripheral scripting, and low-level programming experiments. Built for LunaTech.
 
 ## Features
-- **Two Register Banks**: r-registers (`r0`–`rN`) for general-purpose use; x-registers (`x0`–`xN`) for machine-mapped peripheral slots — both hold integers, strings, or arrays
-- **Shared Heap Budget**: All registers across both banks draw from one byte pool (int = 2B, string = length + 1B, array = 2B per element)
-- **Named Variables**: `$name = r0` / `$name = x3` / `$name = auto` declarations resolved at compile time — `auto` assigns r-registers only
-- **Full Instruction Set**: Arithmetic, logic, control flow, and function calls work on both banks equally
-- **Custom OpCodes**: Register peripheral handlers at runtime — `MACH_GET`, `MATH_FAC`, anything you want
+- **Single Register Bank**: `r0`–`rN`, each register holds an integer or a string
+- **Shared Heap Budget**: All registers draw from one byte pool (int = 2B, string = length + 1B)
+- **Named Variables**: `$name = r0` / `$name = auto` declarations resolved at compile time
+- **Full Instruction Set**: Arithmetic, control flow, and function calls
+- **Custom OpCodes**: Register peripheral handlers at runtime — `MATH_FAC`, anything you want
 - **Call Stack**: Recursion with configurable stack depth
-- **State Persistence**: Save and restore complete VM state — resume anywhere, even on a different machine
+- **State Persistence**: Save and restore complete VM state — resume anywhere
 - **Yield-based Execution**: Generator-style execution for fine-grained step control
 - **Event Waiting**: `UNTIL` instruction for blocking on conditions set by external code or peripherals
 
@@ -35,8 +35,8 @@ bun run main.ts
 ```typescript
 import { VM } from "./panspark";
 
-// r-registers, x-registers, call stack depth, heap limit (bytes)
-const vm = new VM(8, 16, 256, 1280);
+// register count, call stack depth, heap limit (bytes)
+const vm = new VM(8, 256, 1280);
 
 const source = `
 $counter = auto
@@ -63,38 +63,160 @@ while (!gen.next().done) {
 }
 ```
 
-## Register Banks
+## Registers & Heap
 
-PanSpark has two distinct register banks:
+PanSpark has a single bank of general-purpose registers. Each register holds either an integer or a string.
 
-| Bank | Syntax | Purpose |
-| :--- | :--- | :--- |
-| **r-registers** | `r0`, `r1`, … | General-purpose scratch. Counters, temporaries, function arguments. |
-| **x-registers** | `x0`, `x1`, … | Machine-mapped slots. Interface with hardware peripherals. |
+| Value Type | Byte Cost |
+| :--- | :--- |
+| Integer | 2 bytes |
+| String | `string.length + 1` bytes |
 
-Both banks are interchangeable as source or destination in any instruction. Both share the same heap budget.
+All registers share one heap budget. Writing a value into a register frees the old value's cost and charges the new one. Exceeding the limit throws a heap overflow — the write is rejected and the register is unchanged.
 
-```arm
-SET 42 >> x0          // store integer in machine register
-SET r0 >> x1          // copy r-register to x-register
-ADD r0 x0 >> r1       // mix banks freely
-IF x0 == r1 >> label  // compare across banks
+```typescript
+// 8 registers × 2 bytes each = 16 bytes, leaving 1264 of 1280 free
+const vm = new VM(8, 256, 1280);
 ```
 
 ## Named Variables
 
-Write `$name = <register>` or `$name = auto` at the top of your script. `auto` always assigns the next free **r-register**. Machine registers must be declared explicitly.
+Write `$name = <register>` or `$name = auto` at the top of your script. `auto` always assigns the next free register.
 
 ```arm
-$handle   = x0      // bind $handle to machine register x0
-$progress = x1      // bind $progress to x1
-$counter  = auto    // → r0 (next free r-register)
-$result   = auto    // → r1
+$counter  = r0      // bind $counter to r0
+$result   = r1      // bind $result to r1
+$scratch  = auto    // → r2 (next free register)
 ```
 
-Explicit and `auto` declarations can coexist. Names are substituted longest-first to prevent partial-match bugs.
+Explicit and `auto` declarations can coexist; `auto` tracks the highest explicitly claimed register. Names are substituted longest-first to prevent partial-match bugs.
+
+## Instruction Set
+
+### Basic
+
+| OpCode | Syntax | Description |
+| :--- | :--- | :--- |
+| **SET** | `SET <val> >> <dest>` | Stores an integer, string, or register value |
+| **PRINT** | `PRINT <val>` | Pushes the value to the output buffer |
+| **NOP** | `NOP` | No operation |
+| **HALT** | `HALT` | Immediately stops execution |
+
+### Arithmetic
+
+All arithmetic is **integer-only**. Passing a string register throws at runtime.
+
+| OpCode | Syntax | Description |
+| :--- | :--- | :--- |
+| **ADD** | `ADD a b >> dest` | `dest = a + b` |
+| **SUB** | `SUB a b >> dest` | `dest = a - b` |
+| **MUL** | `MUL a b >> dest` | `dest = a * b` |
+| **DIV** | `DIV a b >> dest` | `dest = trunc(a / b)` — throws on zero |
+| **MOD** | `MOD a b >> dest` | `dest = a % b` — throws on zero |
+| **POW** | `POW b e >> dest` | `dest = b ^ e` |
+| **SQRT** | `SQRT a >> dest` | `dest = floor(√a)` |
+| **ABS** | `ABS a >> dest` | `dest = \|a\|` |
+| **MIN** | `MIN a b >> dest` | Stores the smaller of two values |
+| **MAX** | `MAX a b >> dest` | Stores the larger of two values |
+| **RNG** | `RNG min max >> dest` | Random integer in `[min, max]` inclusive |
+| **INC** | `INC <reg>` | Increments register in-place |
+| **DEC** | `DEC <reg>` | Decrements register in-place |
+
+### Control Flow
+
+| OpCode | Syntax | Description |
+| :--- | :--- | :--- |
+| **JUMP** | `JUMP <label>` | Unconditional jump to label |
+| **POINT** | `POINT <label>` | Declares a label |
+| **IF** | `IF v1 op v2 >> label [ELSE label]` | Conditional jump |
+| **UNTIL** | `UNTIL v1 op v2` | Blocks execution until condition becomes true |
+| **CALL** | `CALL <label>` | Push return address, jump to label |
+| **RET** | `RET` | Pop return address, jump back |
+
+**Operators:** `==`, `!=`, `<`, `>`, `<=`, `>=`
+
+- `==` and `!=` work on integers and strings (content comparison).
+- `<`, `>`, `<=`, `>=` work on integers only — passing a string throws.
+
+## Control Flow
+
+### Loops
+
+```arm
+SET 10 >> r0
+
+POINT loop
+  PRINT r0
+  DEC r0
+  IF r0 > 0 >> loop
+
+PRINT 999
+HALT
+```
+
+### Conditional Jumps
+
+```arm
+IF r0 == 5 >> match
+PRINT "no match"
+HALT
+
+POINT match
+PRINT "match"
+HALT
+```
+
+With an `ELSE` target:
+
+```arm
+IF r0 > 5 >> high ELSE low
+PRINT 0
+HALT
+
+POINT high
+PRINT 1
+HALT
+
+POINT low
+PRINT 2
+HALT
+```
+
+### Blocking Wait (UNTIL)
+
+Stays on the instruction, yielding each cycle, until the condition becomes true. The intended use is waiting on a register to be updated by a peripheral or external host code.
+
+```arm
+UNTIL r0 == 1
+PRINT "done"
+HALT
+```
+
+### Functions (Call Stack)
+
+```arm
+POINT main
+  SET 5 >> r0
+  SET 1 >> r1
+  CALL factorial
+  PRINT r1
+  HALT
+
+POINT factorial
+  IF r0 == 0 >> done
+  MUL r1 r0 >> r1
+  DEC r0
+  CALL factorial
+
+POINT done
+  RET
+```
+
+Full recursion is supported up to the configured call stack depth.
 
 ## Custom OpCodes (Peripherals)
+
+Any opcode not in the core set dispatches to a registered peripheral handler. Register handlers on the host before compiling. Handlers receive the full `vm` instance and can read and write registers.
 
 ```typescript
 vm.registerPeripheral("MATH_FAC", (vm, args) => {
@@ -115,33 +237,36 @@ PRINT $result
 HALT
 ```
 
-Peripheral handlers can read and write both r- and x-registers via `fetchValue`, `fetchMemory`, and `setMemory`. Peripheral handler *functions* don't serialize — re-register them after `loadState()`.
+Peripheral handler *functions* don't serialize — re-register them after `loadState()`.
 
 ## State Management
 
 ```typescript
 const snapshot = vm.saveState();
 
-const vm2 = new VM(8, 16, 256, 1280);
+const vm2 = new VM(8, 256, 1280);
 vm2.registerPeripheral("MATH_FAC", ...); // handlers must be re-registered
 vm2.loadState(snapshot);
 
 for (const _ of vm2.run()) {}
 ```
 
+**What survives:** instruction pointer, register values (integers and strings), call stack, output buffer, and compiled instructions (including peripheral names).
+
+**What does not survive:** peripheral handler functions — they are code, not data.
+
 ## API
 
 ### VM Constructor
 ```typescript
-new VM(registerMemoryLimit, machineMemoryLimit, callStackLimit, heapLimit)
+new VM(registerMemoryLimit, callStackLimit, heapLimit)
 ```
 
 | Parameter | Description |
 | :--- | :--- |
-| `registerMemoryLimit` | Number of `r`-registers (e.g. `8` → `r0`–`r7`) |
-| `machineMemoryLimit` | Number of `x`-registers (e.g. `16` → `x0`–`x15`) |
+| `registerMemoryLimit` | Number of registers (e.g. `8` → `r0`–`r7`) |
 | `callStackLimit` | Max call stack depth |
-| `heapLimit` | Total byte budget across **all** registers (both banks) |
+| `heapLimit` | Total byte budget across all registers |
 
 ### Core Methods
 
@@ -149,128 +274,15 @@ new VM(registerMemoryLimit, machineMemoryLimit, callStackLimit, heapLimit)
 | :--- | :--- |
 | `compile(source)` | Compiles PanSpark source — resolves `$vars`, strips comments, yields each `Instruction` |
 | `run()` | Executes instructions, yields after each |
-| `saveState()` | Serializes full VM state to a string (includes both register banks) |
+| `saveState()` | Serializes full VM state to a string |
 | `loadState(state)` | Restores VM from a serialized state string |
 | `registerPeripheral(name, handler)` | Registers a custom opcode handler |
 | `unregisterPeripheral(name)` | Removes a custom opcode handler |
-| `setMemory(data, dest)` | Writes `number \| string \| number[]` to an r- or x-register |
-| `fetchMemory(arg)` | Reads a number — throws on strings or arrays |
-| `fetchValue(arg)` | Reads a `number \| string \| number[]` from any argument type |
-| `heapAvailable()` | Returns remaining heap bytes (across both banks) |
-
-## Array Operations
-
-PanSpark supports first-class arrays of numbers. Arrays can be stored in r- or x-registers and all array operations work on both banks.
-
-| OpCode | Syntax | Description |
-| :--- | :--- | :--- |
-| **SET** (array literal) | `SET [1,2,3] >> dest` | Creates an array with the given elements |
-| **ARR_NEW** | `ARR_NEW size >> dest` | Creates a zero-filled array of given length |
-| **ARR_PUSH** | `ARR_PUSH arr val` | Appends value to array |
-| **ARR_POP** | `ARR_POP arr >> dest` | Removes last element, stores in dest (0 if empty) |
-| **ARR_GET** | `ARR_GET arr idx >> dest` | Reads element at index |
-| **ARR_SET** | `ARR_SET arr idx val` | Writes element at index |
-| **ARR_LEN** | `ARR_LEN arr >> dest` | Stores array length in dest |
-| **ARR_SORT** | `ARR_SORT arr` | Sorts array in ascending order |
-
-- Empty array literals (`[]`) are not allowed; use `ARR_NEW 0`.
-- Arrays cannot contain strings, only numbers.
-- Heap cost: 2 bytes per array element.
-- `IF` comparisons on arrays compare the **sum** of elements for equality and ordering.
-
-### Example
-```arm
-SET [10,20,30] >> x0    // array in machine register
-ARR_PUSH x0 40
-ARR_GET x0 1 >> r0      // cross-bank: read into r-register
-PRINT r0                // 20
-ARR_SET x0 0 99
-PRINT x0                // [99,20,30,40]
-ARR_LEN x0 >> r1
-PRINT r1                // 4
-ARR_SORT x0
-PRINT x0                // [20,30,40,99]
-HALT
-```
-
-## Example Programs
-
-### Factorial (Recursive)
-```arm
-$n   = r0
-$acc = r1
-
-POINT main
-  SET 5 >> $n
-  SET 1 >> $acc
-  CALL factorial
-  PRINT $acc
-  HALT
-
-POINT factorial
-  IF $n == 0 >> done
-  MUL $acc $n >> $acc
-  DEC $n
-  CALL factorial
-
-POINT done
-  RET
-```
-
-### Machine Monitor (x-registers)
-```arm
-// Peripheral writes machine state into x-registers each tick
-$handle   = x0
-$enabled  = x1
-$progress = x2
-
-POINT main
-  MACH_OPEN "macerator_1" >> $handle
-
-POINT poll
-  MACH_GET $handle "enabled"  >> $enabled
-  MACH_GET $handle "progress" >> $progress
-  PRINT $enabled
-  PRINT $progress
-  IF $progress == 100 >> done
-  JUMP poll
-
-POINT done
-  MACH_SET $handle "enabled" 0
-  MACH_CLOSE $handle
-  HALT
-```
-
-### Item Router (mixed banks)
-```arm
-$item = r0     // general-purpose register for current item
-$dest = r1
-$slot = x0     // machine register — peripheral writes the item type here
-
-POINT main
-  UNTIL $slot != 0
-  SET $slot >> $item
-
-  IF $item == "iron_ore" >> route_iron
-  IF $item == "gold_ore" >> route_gold
-  JUMP dump
-
-POINT route_iron
-  SET 3 >> $dest
-  JUMP send
-
-POINT route_gold
-  SET 7 >> $dest
-  JUMP send
-
-POINT dump
-  SET 0 >> $dest
-
-POINT send
-  MACH_SET 0 "destination" $dest
-  SET 0 >> $slot
-  JUMP main
-```
+| `setMemory(data, dest)` | Writes a `number \| string` to a register |
+| `fetchMemory(arg)` | Reads a number — throws on strings |
+| `fetchValue(arg)` | Reads a `number \| string` from any argument type |
+| `heapAvailable()` | Returns remaining heap bytes |
+| `heapUsed()` | Returns consumed heap bytes |
 
 ## License
 Apache 2.0
