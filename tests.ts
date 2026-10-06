@@ -855,7 +855,7 @@ test("peripheral can read and write x-registers", () => {
 });
 
 // -------------------------------------------------------------------
-// 13. Extended register range (r0–r15, matching editor default)
+// 13. Extended register range (r0–r15)
 // -------------------------------------------------------------------
 
 section("13. Extended register range (r0–r15)");
