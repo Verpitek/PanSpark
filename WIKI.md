@@ -80,8 +80,9 @@ $name = auto   // auto: assign next available register
 - Declaration lines are stripped from the compiled output.
 - `auto` tracks the highest explicitly claimed register index to avoid collisions.
 - Explicit and `auto` declarations can coexist freely.
-- Names are substituted longest-first to prevent partial-match bugs (`$foobar` before `$foo`).
+- Names are substituted longest-first and only as whole names (`$foobar` before `$foo`).
 - Only `r`-registers may be declared; any other target throws at compile time.
+- Declaring the same name twice throws; using an undeclared `$name` throws.
 
 ### Example
 
@@ -117,7 +118,7 @@ After variable resolution, the compiler sees plain `r0`, `r1`, `r2` — identica
    - Incorrect: `ADD r0 r1 r2`
 2. **Comments:** Own line only, starting with `//`. Inline comments not supported.
 3. **Case Sensitivity:** OpCodes strictly **UPPERCASE**. Register names lowercase (`r0`, `r3`).
-4. **Whitespace:** Arguments separated by single spaces.
+4. **Whitespace:** Arguments separated by spaces or tabs. Both LF and CRLF line endings are accepted.
 5. **Labels:** Named markers used with `POINT`. Do not use numbers as label names.
 6. **String Literals:** Enclosed in double quotes — `SET "iron_ore" >> r0`.
 7. **Variable Declarations:** `$name = r0` or `$name = auto`. Placed before first use (top of file by convention).
@@ -155,14 +156,14 @@ All arithmetic operations are **integer-only**. Passing a string register throws
 | **ADD** | `ADD a b >> dest` | `dest = a + b` |
 | **SUB** | `SUB a b >> dest` | `dest = a - b` |
 | **MUL** | `MUL a b >> dest` | `dest = a * b` |
-| **DIV** | `DIV a b >> dest` | `dest = trunc(a / b)` — throws on zero |
-| **MOD** | `MOD a b >> dest` | `dest = a % b` — throws on zero |
+| **DIV** | `DIV a b >> dest` | `dest = trunc(a / b)` — truncates toward zero, throws on zero |
+| **MOD** | `MOD a b >> dest` | `dest = a % b` — remainder keeps the dividend's sign, throws on zero |
 | **POW** | `POW b e >> dest` | `dest = b ^ e` |
 | **SQRT** | `SQRT a >> dest` | `dest = floor(√a)` |
 | **ABS** | `ABS a >> dest` | `dest = \|a\|` |
 | **MIN** | `MIN a b >> dest` | Stores the smaller of two values |
 | **MAX** | `MAX a b >> dest` | Stores the larger of two values |
-| **RNG** | `RNG min max >> dest` | Random integer in `[min, max]` inclusive |
+| **RNG** | `RNG min max >> dest` | Random integer in `[min, max]` inclusive — throws if `min > max` |
 
 ### Shortcuts
 
@@ -190,7 +191,7 @@ IF <val1> <op> <val2> >> <label_true> ELSE <label_false>
 
 **Operators:** `==`, `!=`, `<`, `>`, `<=`, `>=`
 
-- `==` and `!=` work on integers and strings (content comparison).
+- `==` and `!=` work on integers and strings (content comparison) — comparing a string with an integer throws.
 - `<`, `>`, `<=`, `>=` work on integers only — passing a string throws.
 - Any register can appear on either side, and literals are allowed.
 
@@ -202,7 +203,7 @@ If the condition is true, execution jumps to `label_true`. If the condition is f
 UNTIL <val1> <op> <val2>
 ```
 
-Stays on this instruction, yielding each cycle, until the condition becomes true. The intended use is waiting on a register to be updated by a peripheral or external host code.
+Stays on this instruction, yielding each cycle, until the condition becomes true. The intended use is waiting on a register to be updated by a peripheral or external host code. With `runFastFlag` enabled there are no per-step yields, so `UNTIL` becomes a busy-loop with no host window to update the condition.
 
 ```arm
 // Wait until a machine's progress register hits 100
@@ -250,7 +251,7 @@ PRINT r2
 HALT
 ```
 
-**Peripheral names survive serialization** — stored on each compiled instruction. Handler *functions* do not — re-register them after `loadState()`.
+**Peripheral names survive serialization** — stored on each compiled instruction. Handler *functions* do not — re-register them after `loadState()`. String arguments must be quoted; bare words are not valid arguments.
 
 ---
 
@@ -277,6 +278,8 @@ for (const _ of vm2.run()) {}
 
 **What does not survive:**
 - Peripheral handler functions — they are code, not data
+
+Snapshots are versioned. Loading a snapshot with a different schema version, a register count that doesn't match the target VM, a call stack exceeding its limit, or malformed data throws instead of silently corrupting state.
 
 ---
 
@@ -391,6 +394,10 @@ import { VM } from "./panspark";
 
 // register count, call stack depth, heap limit (bytes)
 const vm = new VM(8, 256, 1280);
+
+// re-run a compiled program from a clean slate
+vm.reset();
+for (const _ of vm.run()) {}
 ```
 
 ### Core Methods
@@ -399,6 +406,7 @@ const vm = new VM(8, 256, 1280);
 | :--- | :--- | :--- |
 | `compile(source)` | `Generator<Instruction>` | Resolves `$vars`, strips comments, compiles to instructions (generator — iterate to consume) |
 | `run()` | `Generator<void>` | Executes instructions, yields after each step |
+| `reset()` | `void` | Clears execution state (ip, stack, output, registers); keeps compiled instructions |
 | `saveState()` | `string` | Serializes full VM state |
 | `loadState(state)` | `void` | Restores VM from serialized state |
 | `registerPeripheral(name, fn)` | `void` | Registers a custom opcode handler |

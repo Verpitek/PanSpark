@@ -204,12 +204,20 @@ test("DIV by zero throws", () => {
   expectThrows(() => run(`SET 10 >> r0\nSET 0 >> r1\nDIV r0 r1 >> r2\nHALT`), "Division by zero");
 });
 
+test("DIV truncates toward zero", () => {
+  expect(run(`SET -5 >> r0\nSET 2 >> r1\nDIV r0 r1 >> r2\nPRINT r2\nHALT`), [-2]);
+});
+
 test("MOD", () => {
   expect(run(`SET 17 >> r0\nSET 5 >> r1\nMOD r0 r1 >> r2\nPRINT r2\nHALT`), [2]);
 });
 
 test("MOD by zero throws", () => {
   expectThrows(() => run(`SET 10 >> r0\nSET 0 >> r1\nMOD r0 r1 >> r2\nHALT`), "Modulo by zero");
+});
+
+test("MOD keeps the dividend's sign", () => {
+  expect(run(`SET -5 >> r0\nSET 3 >> r1\nMOD r0 r1 >> r2\nPRINT r2\nHALT`), [-2]);
 });
 
 test("POW", () => {
@@ -248,6 +256,13 @@ test("RNG — result within bounds", () => {
   const out = run(`SET 1 >> r0\nSET 10 >> r1\nRNG r0 r1 >> r2\nPRINT r2\nHALT`);
   const n = out[0] as number;
   if (n < 1 || n > 10) throw Error(`RNG result ${n} out of bounds [1, 10]`);
+});
+
+test("RNG with min > max throws", () => {
+  expectThrows(
+    () => run(`SET 10 >> r0\nSET 1 >> r1\nRNG r0 r1 >> r2\nHALT`),
+    "RNG min",
+  );
 });
 
 test("arithmetic on string register throws", () => {
@@ -303,6 +318,20 @@ test("IF ordering on string throws", () => {
   expectThrows(
     () => run(`SET "abc" >> r0\nSET "xyz" >> r1\nIF r0 < r1 >> nope\nHALT\nPOINT nope\nHALT`),
     "Expected number but got string",
+  );
+});
+
+test("IF mixed-type equality throws", () => {
+  expectThrows(
+    () => run(`SET "5" >> r0\nIF r0 == 5 >> t\nPRINT 0\nHALT\nPOINT t\nPRINT 1\nHALT`),
+    "Cannot compare string and integer",
+  );
+});
+
+test("IF mixed-type inequality throws", () => {
+  expectThrows(
+    () => run(`SET "5" >> r0\nIF r0 != 5 >> t\nPRINT 0\nHALT\nPOINT t\nPRINT 1\nHALT`),
+    "Cannot compare string and integer",
   );
 });
 

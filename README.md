@@ -89,7 +89,7 @@ $result   = r1      // bind $result to r1
 $scratch  = auto    // → r2 (next free register)
 ```
 
-Explicit and `auto` declarations can coexist; `auto` tracks the highest explicitly claimed register. Names are substituted longest-first to prevent partial-match bugs.
+Explicit and `auto` declarations can coexist; `auto` tracks the highest explicitly claimed register. Names are substituted longest-first and only as whole names — using an undeclared `$name` or declaring the same name twice throws at compile time.
 
 ## Instruction Set
 
@@ -111,14 +111,14 @@ All arithmetic is **integer-only**. Passing a string register throws at runtime.
 | **ADD** | `ADD a b >> dest` | `dest = a + b` |
 | **SUB** | `SUB a b >> dest` | `dest = a - b` |
 | **MUL** | `MUL a b >> dest` | `dest = a * b` |
-| **DIV** | `DIV a b >> dest` | `dest = trunc(a / b)` — throws on zero |
-| **MOD** | `MOD a b >> dest` | `dest = a % b` — throws on zero |
+| **DIV** | `DIV a b >> dest` | `dest = trunc(a / b)` — truncates toward zero, throws on zero |
+| **MOD** | `MOD a b >> dest` | `dest = a % b` — remainder keeps the dividend's sign, throws on zero |
 | **POW** | `POW b e >> dest` | `dest = b ^ e` |
 | **SQRT** | `SQRT a >> dest` | `dest = floor(√a)` |
 | **ABS** | `ABS a >> dest` | `dest = \|a\|` |
 | **MIN** | `MIN a b >> dest` | Stores the smaller of two values |
 | **MAX** | `MAX a b >> dest` | Stores the larger of two values |
-| **RNG** | `RNG min max >> dest` | Random integer in `[min, max]` inclusive |
+| **RNG** | `RNG min max >> dest` | Random integer in `[min, max]` inclusive — throws if `min > max` |
 | **INC** | `INC <reg>` | Increments register in-place |
 | **DEC** | `DEC <reg>` | Decrements register in-place |
 
@@ -135,7 +135,7 @@ All arithmetic is **integer-only**. Passing a string register throws at runtime.
 
 **Operators:** `==`, `!=`, `<`, `>`, `<=`, `>=`
 
-- `==` and `!=` work on integers and strings (content comparison).
+- `==` and `!=` work on integers and strings (content comparison) — comparing a string with an integer throws.
 - `<`, `>`, `<=`, `>=` work on integers only — passing a string throws.
 
 ## Control Flow
@@ -255,6 +255,8 @@ for (const _ of vm2.run()) {}
 
 **What does not survive:** peripheral handler functions — they are code, not data.
 
+Snapshots are versioned and validated on load: loading a snapshot with a different schema version, a mismatched register count, or malformed data throws.
+
 ## API
 
 ### VM Constructor
@@ -274,6 +276,7 @@ new VM(registerMemoryLimit, callStackLimit, heapLimit)
 | :--- | :--- |
 | `compile(source)` | Compiles PanSpark source — resolves `$vars`, strips comments, yields each `Instruction` |
 | `run()` | Executes instructions, yields after each |
+| `reset()` | Clears execution state (ip, call stack, output, registers); keeps compiled instructions |
 | `saveState()` | Serializes full VM state to a string |
 | `loadState(state)` | Restores VM from a serialized state string |
 | `registerPeripheral(name, handler)` | Registers a custom opcode handler |

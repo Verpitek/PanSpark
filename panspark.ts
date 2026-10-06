@@ -175,10 +175,24 @@ function evaluateIf(vm: VM, instruction: Instruction): boolean {
   };
 
   switch (op.type) {
-    case ArgType.EQUAL:
-      return vm.fetchValue(a) === vm.fetchValue(b);
-    case ArgType.NOTEQUAL:
-      return vm.fetchValue(a) !== vm.fetchValue(b);
+    case ArgType.EQUAL: {
+      const aVal = vm.fetchValue(a);
+      const bVal = vm.fetchValue(b);
+      if (typeof aVal !== typeof bVal)
+        throw Error(
+          `Cannot compare string and integer at line: ${vm.activeInstructionPos + 1}`,
+        );
+      return aVal === bVal;
+    }
+    case ArgType.NOTEQUAL: {
+      const aVal = vm.fetchValue(a);
+      const bVal = vm.fetchValue(b);
+      if (typeof aVal !== typeof bVal)
+        throw Error(
+          `Cannot compare string and integer at line: ${vm.activeInstructionPos + 1}`,
+        );
+      return aVal !== bVal;
+    }
     case ArgType.LESS:
       return asNumber(a) < asNumber(b);
     case ArgType.GREATER:
@@ -700,7 +714,7 @@ export class VM {
             instr.arguments[2],
           );
           break;
-        // Integer division
+        // Integer division — truncates toward zero
         case OpCode.DIV: {
           const divisor = this.fetchMemory(instr.arguments[1]);
           if (divisor === 0)
@@ -711,7 +725,7 @@ export class VM {
           );
           break;
         }
-        // Modulo operation
+        // Modulo — remainder keeps the dividend's sign (JS semantics)
         case OpCode.MOD: {
           const divisor = this.fetchMemory(instr.arguments[1]);
           if (divisor === 0)
@@ -778,10 +792,12 @@ export class VM {
         case OpCode.RNG: {
           const min = this.fetchMemory(instr.arguments[0]);
           const max = this.fetchMemory(instr.arguments[1]);
-          const lo = Math.min(min, max);
-          const hi = Math.max(min, max);
+          if (min > max)
+            throw Error(
+              `RNG min (${min}) is greater than max (${max}) at line: ${this.activeInstructionPos + 1}`,
+            );
           this.setMemory(
-            Math.floor(Math.random() * (hi - lo + 1)) + lo,
+            Math.floor(Math.random() * (max - min + 1)) + min,
             instr.arguments[2],
           );
           break;
