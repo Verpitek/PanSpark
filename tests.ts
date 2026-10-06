@@ -115,6 +115,48 @@ test("name shadowing safety — $foobar not partially matched by $foo", () => {
 });
 
 // -------------------------------------------------------------------
+// 1b. Parser Hardening
+// -------------------------------------------------------------------
+
+section("1b. Parser Hardening");
+
+test("undeclared variable throws", () => {
+  expectThrows(() => run(`PRINT $missing\nHALT`), `Undefined variable "$missing"`);
+});
+
+test("partial variable name is not substituted", () => {
+  expectThrows(() => run(`$a = r0\nPRINT $ab\nHALT`), `Undefined variable "$ab"`);
+});
+
+test("duplicate variable declaration throws", () => {
+  expectThrows(() => run(`$a = r0\n$a = r1\nHALT`), "Duplicate variable declaration");
+});
+
+test("non-r variable declaration throws", () => {
+  expectThrows(() => run(`$a = x0\nHALT`), "Only r-registers can be declared");
+});
+
+test("tabs are valid separators", () => {
+  expect(run(`SET\t7\t>>\tr0\nPRINT r0\nHALT`), [7]);
+});
+
+test("CRLF line endings", () => {
+  expect(run(`SET 1 >> r0\r\nPRINT r0\r\nHALT\r\nPRINT 999`), [1]);
+});
+
+test("unterminated string literal throws", () => {
+  expectThrows(() => run(`SET "oops >> r0\nHALT`), "Unterminated string literal");
+});
+
+test("invalid numeric token throws", () => {
+  expectThrows(() => run(`SET 5x >> r0\nHALT`), `Invalid argument "5x"`);
+});
+
+test("invalid register token throws", () => {
+  expectThrows(() => run(`SET 5 >> r3x\nHALT`), `Invalid argument "r3x"`);
+});
+
+// -------------------------------------------------------------------
 // 2. Basic Operations
 // -------------------------------------------------------------------
 
@@ -382,6 +424,25 @@ test("countdown loop", () => {
 
 test("undefined label throws", () => {
   expectThrows(() => run(`JUMP nowhere\nHALT`), `Undefined label`);
+});
+
+test("duplicate label throws", () => {
+  expectThrows(() => run(`JUMP a\nPOINT a\nHALT\nPOINT a\nHALT`), `Duplicate label "a"`);
+});
+
+test("IF without jump target throws", () => {
+  expectThrows(() => run(`SET 1 >> r0\nIF r0 == 1\nHALT`), "IF requires a jump target");
+});
+
+test("invalid IF operator throws", () => {
+  expectThrows(
+    () => run(`SET 1 >> r0\nIF r0 r0 r0 >> t\nHALT\nPOINT t\nHALT`),
+    "Invalid comparison operator",
+  );
+});
+
+test("invalid UNTIL operator throws", () => {
+  expectThrows(() => run(`UNTIL r0 r0 r0\nHALT`), "Invalid comparison operator");
 });
 
 // -------------------------------------------------------------------

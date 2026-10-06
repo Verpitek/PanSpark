@@ -71,18 +71,20 @@ function tokenize(line: string): string[] {
   const tokens: string[] = [];
   let i = 0;
   while (i < line.length) {
-    if (line[i] === " ") {
+    if (line[i] === " " || line[i] === "\t") {
       i++;
       continue;
     }
     if (line[i] === '"') {
       let j = i + 1;
       while (j < line.length && line[j] !== '"') j++;
+      if (j >= line.length)
+        throw Error(`Unterminated string literal: ${line}`);
       tokens.push(line.slice(i, j + 1));
       i = j + 1;
     } else {
       let j = i;
-      while (j < line.length && line[j] !== " ") j++;
+      while (j < line.length && line[j] !== " " && line[j] !== "\t") j++;
       tokens.push(line.slice(i, j));
       i = j;
     }
@@ -90,21 +92,21 @@ function tokenize(line: string): string[] {
   return tokens;
 }
 
-function parseArgument(arg: string): Argument {
+function parseArgument(arg: string, line: number): Argument {
   if (arg.startsWith('"') && arg.endsWith('"'))
     return { type: ArgType.STRING, value: arg.slice(1, -1) };
-  if (arg.startsWith("r")) {
-    const idx = parseInt(arg.slice(1));
-    if (isNaN(idx)) return { type: ArgType.LITERAL, value: parseInt(arg) };
-    return { type: ArgType.REGISTER, value: idx };
-  }
+  if (arg.startsWith("$"))
+    throw Error(`Undefined variable "${arg}" at line ${line + 1}`);
+  const reg = arg.match(/^r(\d+)$/);
+  if (reg) return { type: ArgType.REGISTER, value: parseInt(reg[1]) };
   if (arg === "==") return { type: ArgType.EQUAL, value: 0 };
   if (arg === "!=") return { type: ArgType.NOTEQUAL, value: 0 };
   if (arg === "<") return { type: ArgType.LESS, value: 0 };
   if (arg === ">") return { type: ArgType.GREATER, value: 0 };
   if (arg === "<=") return { type: ArgType.LESSEQUAL, value: 0 };
   if (arg === ">=") return { type: ArgType.GREATEQUAL, value: 0 };
-  return { type: ArgType.LITERAL, value: parseInt(arg) };
+  if (/^-?\d+$/.test(arg)) return { type: ArgType.LITERAL, value: parseInt(arg) };
+  throw Error(`Invalid argument "${arg}" at line ${line + 1}`);
 }
 
 const expectedArgCount: Partial<Record<OpCode, number>> = {
@@ -129,7 +131,7 @@ function buildInstruction(
   const argArr: Argument[] = [];
   for (let i = 1; i < tokens.length; i++) {
     if (tokens[i] !== ">>" && tokens[i] !== "ELSE")
-      argArr.push(parseArgument(tokens[i]));
+      argArr.push(parseArgument(tokens[i], line));
   }
   const expected = expectedArgCount[operation];
   if (expected !== undefined && argArr.length !== expected) {
@@ -138,6 +140,23 @@ function buildInstruction(
     );
   }
   return { operation, arguments: argArr, line, peripheralName };
+}
+
+const comparisonTypes = new Set<ArgType>([
+  ArgType.EQUAL,
+  ArgType.NOTEQUAL,
+  ArgType.LESS,
+  ArgType.GREATER,
+  ArgType.LESSEQUAL,
+  ArgType.GREATEQUAL,
+]);
+
+function assertComparison(instruction: Instruction): void {
+  const op = instruction.arguments[1];
+  if (!op || !comparisonTypes.has(op.type))
+    throw Error(
+      `Invalid comparison operator at line ${instruction.line + 1}`,
+    );
 }
 
 /** Evaluates an IF/UNTIL comparison. */
@@ -342,18 +361,25 @@ export class VM {
     const vars = new Map<string, string>();
     let autoCounter = 0;
     const output: string[] = [];
-    for (const line of source.split("\n")) {
-      const trimmed = line.trimStart();
+    const lines = source.split(/\r?\n/);
+    for (let li = 0; li < lines.length; li++) {
+      const trimmed = lines[li].trimStart();
       const decl = trimmed.match(/^\$(\w+)\s*=\s*(\S+)$/);
 
       if (decl) {
         const varName = `$${decl[1]}`;
         const target = decl[2];
+        if (vars.has(varName))
+          throw Error(
+            `Duplicate variable declaration "${varName}" at line ${li + 1}`,
+          );
         if (target === "auto") {
           vars.set(varName, `r${autoCounter++}`);
         } else {
           if (!/^r\d+$/.test(target))
-            throw Error(`Only r-registers can be declared (got "${target}")`);
+            throw Error(
+              `Only r-registers can be declared (got "${target}") at line ${li + 1}`,
+            );
           vars.set(varName, target);
           const idx = parseInt(target.slice(1));
           if (idx >= autoCounter) autoCounter = idx + 1;
@@ -362,12 +388,17 @@ export class VM {
       }
 
       let resolved = trimmed;
-      // longest names first to prevent partial matches
+      // longest names first, and only whole names, to prevent partial matches
       const sorted = [...vars.entries()].sort(
         (a, b) => b[0].length - a[0].length,
       );
-      for (const [name, reg] of sorted)
-        resolved = resolved.replaceAll(name, reg);
+      for (const [name, reg] of sorted) {
+        const pattern = new RegExp(
+          name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\w$])",
+          "g",
+        );
+        resolved = resolved.replace(pattern, reg);
+      }
       output.push(resolved);
     }
 
@@ -381,7 +412,7 @@ export class VM {
     const code = this.resolveVariables(source);
     // Pass 1 — strip blanks and comments
     const sanitized: string[] = [];
-    for (const raw of code.split("\n")) {
+    for (const raw of code.split(/\r?\n/)) {
       const trimmed = raw.trimStart();
       if (!trimmed || trimmed.startsWith("//")) continue;
       sanitized.push(trimmed);
@@ -391,12 +422,17 @@ export class VM {
     const pointMemory = new Map<string, number>();
     for (let i = 0; i < sanitized.length; i++) {
       const toks = tokenize(sanitized[i]);
-      if (toks[0] === "POINT") pointMemory.set(toks[1], i);
+      if (toks[0] === "POINT") {
+        if (pointMemory.has(toks[1]))
+          throw Error(`Duplicate label "${toks[1]}" at line ${i + 1}`);
+        pointMemory.set(toks[1], i);
+      }
     }
 
-    const resolveLabel = (label: string): string => {
+    const resolveLabel = (label: string, line: number): string => {
       const idx = pointMemory.get(label);
-      if (idx === undefined) throw Error(`Undefined label: "${label}"`);
+      if (idx === undefined)
+        throw Error(`Undefined label: "${label}" at line ${line + 1}`);
       return idx.toString();
     };
 
@@ -407,7 +443,7 @@ export class VM {
 
       const resolveAt = (tokenIdx: number) => {
         toks = [...toks];
-        toks[tokenIdx] = resolveLabel(toks[tokenIdx]);
+        toks[tokenIdx] = resolveLabel(toks[tokenIdx], i);
       };
 
       let instruction: Instruction | null = null;
@@ -449,15 +485,16 @@ export class VM {
         case "IF": {
           const arrowIdx = toks.indexOf(">>");
           if (arrowIdx === -1)
-            throw Error(`IF requires a jump target at line ${i}`);
+            throw Error(`IF requires a jump target at line ${i + 1}`);
           resolveAt(arrowIdx + 1);
           const elseIdx = toks.indexOf("ELSE");
           if (elseIdx !== -1) {
             if (elseIdx + 1 >= toks.length)
-              throw Error(`Missing label after ELSE at line ${i}`);
+              throw Error(`Missing label after ELSE at line ${i + 1}`);
             resolveAt(elseIdx + 1);
           }
           instruction = buildInstruction(OpCode.IF, toks, i);
+          assertComparison(instruction);
           break;
         }
 
@@ -517,6 +554,7 @@ export class VM {
         // UNTIL  <cond>
         case "UNTIL":
           instruction = buildInstruction(OpCode.UNTIL, toks, i);
+          assertComparison(instruction);
           break;
         // RET
         case "RET":
@@ -528,7 +566,7 @@ export class VM {
           if (this.peripherals.has(opcode)) {
             instruction = buildInstruction(OpCode.PERIPHERAL, toks, i, opcode);
           } else {
-            throw Error(`Unknown OpCode "${opcode}" at line ${i}`);
+            throw Error(`Unknown OpCode "${opcode}" at line ${i + 1}`);
           }
       }
 
