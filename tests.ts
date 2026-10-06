@@ -687,6 +687,99 @@ test("registers survive saveState — including strings", () => {
 });
 
 // -------------------------------------------------------------------
+// 9b. Lifecycle & State Validation
+// -------------------------------------------------------------------
+
+section("9b. Lifecycle & State Validation");
+
+test("reset allows re-running a program", () => {
+  const vm = new VM(8, 256, 1280);
+  for (const _ of vm.compile(`SET 3 >> r0\nPRINT r0\nHALT`)) {}
+
+  const first: (number | string)[] = [];
+  let gen = vm.run();
+  while (!gen.next().done) {
+    if (vm.outputBuffer.length > 0) first.push(...vm.outputBuffer);
+  }
+
+  vm.reset();
+
+  const second: (number | string)[] = [];
+  gen = vm.run();
+  while (!gen.next().done) {
+    if (vm.outputBuffer.length > 0) second.push(...vm.outputBuffer);
+  }
+
+  expect(second, first);
+});
+
+test("reset restores fresh registers and keeps instructions", () => {
+  const vm = new VM(8, 256, 1280);
+  for (const _ of vm.compile(`SET 5 >> r0\nHALT`)) {}
+  const gen = vm.run();
+  while (!gen.next().done) {}
+
+  expect(vm.registerMemory[0], 5);
+  expect(vm.instructions.length, 2);
+
+  vm.reset();
+
+  expect(vm.registerMemory[0], 0);
+  expect(vm.activeInstructionPos, 0);
+  expect(vm.stackPointer, 0);
+  expect(vm.outputBuffer, []);
+  expect(vm.instructions.length, 2);
+});
+
+test("failed compile leaves no program behind", () => {
+  const vm = new VM(8, 256, 1280);
+  for (const _ of vm.compile(`PRINT 1\nHALT`)) {}
+
+  expectThrows(() => {
+    for (const _ of vm.compile(`PRINT 1\nBOGUS\nHALT`)) {}
+  }, "Unknown OpCode");
+
+  expect(vm.instructions.length, 0);
+  const output: (number | string)[] = [];
+  const gen = vm.run();
+  while (!gen.next().done) {
+    if (vm.outputBuffer.length > 0) output.push(...vm.outputBuffer);
+  }
+  expect(output, []);
+});
+
+test("state snapshot carries a version", () => {
+  const vm = new VM(4, 256, 1280);
+  expect(JSON.parse(vm.saveState()).version, 1);
+});
+
+test("loadState rejects invalid JSON", () => {
+  const vm = new VM(8, 256, 1280);
+  expectThrows(() => vm.loadState("not json"), "not valid JSON");
+});
+
+test("loadState rejects missing version", () => {
+  const vm = new VM(8, 256, 1280);
+  const s = JSON.parse(vm.saveState());
+  delete s.version;
+  expectThrows(() => vm.loadState(JSON.stringify(s)), "Unsupported state version");
+});
+
+test("loadState rejects register count mismatch", () => {
+  const vm1 = new VM(8, 256, 1280);
+  const snapshot = vm1.saveState();
+  const vm2 = new VM(4, 256, 1280);
+  expectThrows(() => vm2.loadState(snapshot), "register count mismatch");
+});
+
+test("loadState rejects invalid register values", () => {
+  const vm = new VM(4, 256, 1280);
+  const s = JSON.parse(vm.saveState());
+  s.registers = [1, {}, 3, 4];
+  expectThrows(() => vm.loadState(JSON.stringify(s)), "registers must be numbers or strings");
+});
+
+// -------------------------------------------------------------------
 // 10. NOP and HALT
 // -------------------------------------------------------------------
 

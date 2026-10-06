@@ -320,8 +320,11 @@ export class VM {
   // -------------------------------------------------------------------
   // Serialisation
   // -------------------------------------------------------------------
+  private static readonly SCHEMA_VERSION = 1;
+
   public saveState(): string {
     return JSON.stringify({
+      version: VM.SCHEMA_VERSION,
       ip: this.activeInstructionPos,
       registers: this.registerMemory,
       callStack: Array.from(this.callStack.slice(0, this.stackPointer)),
@@ -331,19 +334,65 @@ export class VM {
   }
 
   public loadState(state: string): void {
-    const s = JSON.parse(state);
+    let s: any;
+    try {
+      s = JSON.parse(state);
+    } catch {
+      throw Error("Invalid state: not valid JSON");
+    }
+    if (!s || typeof s !== "object")
+      throw Error("Invalid state: expected an object");
+    if (s.version !== VM.SCHEMA_VERSION)
+      throw Error(
+        `Unsupported state version: ${s.version} (expected ${VM.SCHEMA_VERSION})`,
+      );
+    if (!Array.isArray(s.registers) || s.registers.length !== this.registerMemoryLimit)
+      throw Error(
+        `State register count mismatch: expected ${this.registerMemoryLimit}`,
+      );
+    if (!s.registers.every((v: unknown) => typeof v === "number" || typeof v === "string"))
+      throw Error("Invalid state: registers must be numbers or strings");
+    if (
+      !Array.isArray(s.callStack) ||
+      !s.callStack.every((v: unknown) => typeof v === "number")
+    )
+      throw Error("Invalid state: callStack must be an array of numbers");
+    if (!Array.isArray(s.instructions))
+      throw Error("Invalid state: instructions must be an array");
+    if (
+      !Array.isArray(s.output) ||
+      !s.output.every((v: unknown) => typeof v === "number" || typeof v === "string")
+    )
+      throw Error("Invalid state: output must be an array of numbers or strings");
+    if (typeof s.ip !== "number" || s.ip < 0 || s.ip > s.instructions.length)
+      throw Error("Invalid state: ip out of range");
+
     this.activeInstructionPos = s.ip;
-    this.registerMemory = s.registers;
+    this.registerMemory = [...s.registers];
 
     this.callStack.fill(0);
     this.stackPointer = 0;
-    if (s.callStack && s.callStack.length > 0) {
+    if (s.callStack.length > 0) {
+      if (s.callStack.length > this.callStackLimit)
+        throw Error("Invalid state: callStack exceeds call stack limit");
       this.stackPointer = s.callStack.length;
       s.callStack.forEach((v: number, i: number) => (this.callStack[i] = v));
     }
 
     this.outputBuffer = s.output;
     this.instructions = s.instructions;
+  }
+
+  /** Clears execution state (ip, call stack, output, registers). Compiled instructions are kept. */
+  public reset(): void {
+    this.activeInstructionPos = 0;
+    this.stackPointer = 0;
+    this.callStack.fill(0);
+    this.outputBuffer = [];
+    this.registerMemory = Array.from(
+      { length: this.registerMemoryLimit },
+      () => 0,
+    );
   }
 
   // -------------------------------------------------------------------
@@ -428,6 +477,8 @@ export class VM {
         pointMemory.set(toks[1], i);
       }
     }
+
+    const compiled: Instruction[] = [];
 
     const resolveLabel = (label: string, line: number): string => {
       const idx = pointMemory.get(label);
@@ -571,10 +622,13 @@ export class VM {
       }
 
       if (instruction) {
-        this.instructions.push(instruction);
+        compiled.push(instruction);
         yield instruction;
       }
     }
+
+    // Atomic install — a failed compile never leaves a partial program
+    this.instructions = compiled;
   }
 
   // -------------------------------------------------------------------
