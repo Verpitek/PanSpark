@@ -41,7 +41,7 @@ POINT done
   RET
 `;
 
-const vm = new VM(16, 16, 128, 1280, 16);
+const vm = new VM(16, 128, 1280);
 
 vm.registerPeripheral("MATH_FAC", (vm, args) => {
   const n = vm.fetchMemory(args[0]);

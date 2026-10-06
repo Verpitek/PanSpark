@@ -38,7 +38,7 @@ function expectThrows(fn: () => void, containing?: string) {
 }
 
 function run(source: string, vm?: VM): (number | string)[] {
-  const v = vm ?? new VM(8, 16, 256, 1280);
+  const v = vm ?? new VM(8, 256, 1280);
   for (const _ of v.compile(source)) {}
   const output: (number | string)[] = [];
   const gen = v.run();
@@ -260,7 +260,7 @@ test("IF ordering operators", () => {
 test("IF ordering on string throws", () => {
   expectThrows(
     () => run(`SET "abc" >> r0\nSET "xyz" >> r1\nIF r0 < r1 >> nope\nHALT\nPOINT nope\nHALT`),
-    "Expected number or array but got string",
+    "Expected number but got string",
   );
 });
 
@@ -423,7 +423,7 @@ test("stack underflow throws", () => {
 
 test("stack overflow throws at call stack limit", () => {
   // call stack depth 4 — infinite recursion should overflow
-  const vm = new VM(8, 16, 4, 1280);
+  const vm = new VM(8, 4, 1280);
   expectThrows(() => run(`
     CALL inf
     HALT
@@ -444,7 +444,7 @@ test("passes immediately when condition already true", () => {
 });
 
 test("unblocks when condition becomes true", () => {
-  const vm = new VM(8, 16, 256, 1280);
+  const vm = new VM(8, 256, 1280);
   for (const _ of vm.compile(`UNTIL r0 == 1\nPRINT 1\nHALT`)) {}
 
   const output: (number | string)[] = [];
@@ -454,7 +454,7 @@ test("unblocks when condition becomes true", () => {
   for (let i = 0; i < 5; i++) gen.next();
 
   // simulate external event
-  vm.registerMemory[0] = { tag: "int", data: 1 };
+  vm.registerMemory[0] = 1;
 
   // drain to completion
   while (!gen.next().done) {
@@ -471,7 +471,7 @@ test("unblocks when condition becomes true", () => {
 section("7. Heap");
 
 test("integer heap usage — exact fit", () => {
-  const vm = new VM(4, 0, 256, 8); // 4 × 2 = 8 bytes exactly
+  const vm = new VM(4, 256, 8); // 4 × 2 = 8 bytes exactly
   for (const _ of vm.compile(`SET 1 >> r0\nSET 2 >> r1\nSET 3 >> r2\nSET 4 >> r3\nHALT`)) {}
   const gen = vm.run();
   while (!gen.next().done) {}
@@ -479,7 +479,7 @@ test("integer heap usage — exact fit", () => {
 });
 
 test("heap overflow throws", () => {
-  const vm = new VM(2, 0, 256, 4); // 2 × 2 = 4 bytes, no room for strings
+  const vm = new VM(2, 256, 4); // 2 × 2 = 4 bytes, no room for strings
   expectThrows(
     () => run(`SET "toolong" >> r0\nHALT`, vm),
     "Heap overflow",
@@ -487,7 +487,7 @@ test("heap overflow throws", () => {
 });
 
 test("heap freed on overwrite", () => {
-  const vm = new VM(2, 0, 256, 20);
+  const vm = new VM(2, 256, 20);
   expect(run(`
     SET "hello" >> r0
     SET 0 >> r0
@@ -498,7 +498,7 @@ test("heap freed on overwrite", () => {
 });
 
 test("heapAvailable reflects current usage", () => {
-  const vm = new VM(4, 0, 256, 1280);
+  const vm = new VM(4, 256, 1280);
   const before = vm.heapAvailable();
   for (const _ of vm.compile(`SET "test" >> r0\nHALT`)) {}
   const gen = vm.run();
@@ -514,7 +514,7 @@ test("heapAvailable reflects current usage", () => {
 section("8. Custom OpCodes (Peripherals)");
 
 test("MATH_FAC peripheral", () => {
-  const vm = new VM(8, 16, 256, 1280);
+  const vm = new VM(8, 256, 1280);
   vm.registerPeripheral("MATH_FAC", (vm, args) => {
     const n = vm.fetchMemory(args[0]);
     let acc = 1;
@@ -525,7 +525,7 @@ test("MATH_FAC peripheral", () => {
 });
 
 test("peripheral with string argument", () => {
-  const vm = new VM(8, 16, 256, 1280);
+  const vm = new VM(8, 256, 1280);
   vm.registerPeripheral("ECHO", (vm, args) => {
     vm.outputBuffer.push(vm.fetchValue(args[0]));
   });
@@ -537,7 +537,7 @@ test("unregistered peripheral throws", () => {
 });
 
 test("peripheral can read and write registers", () => {
-  const vm = new VM(8, 16, 256, 1280);
+  const vm = new VM(8, 256, 1280);
   vm.registerPeripheral("DOUBLE", (vm, args) => {
     const val = vm.fetchMemory(args[0]);
     vm.setMemory(val * 2, args[1]);
@@ -564,18 +564,18 @@ test("saveState and loadState — resumes correctly", () => {
   `;
 
   // run to completion on vm1
-  const vm1 = new VM(8, 16, 256, 1280);
+  const vm1 = new VM(8, 256, 1280);
   const full = run(source, vm1);
 
   // run halfway on vm2, save, restore to vm3, finish
-  const vm2 = new VM(8, 16, 256, 1280);
+  const vm2 = new VM(8, 256, 1280);
   for (const _ of vm2.compile(source)) {}
   const gen2 = vm2.run();
   for (let i = 0; i < 10; i++) gen2.next();
 
   const snapshot = vm2.saveState();
 
-  const vm3 = new VM(8, 16, 256, 1280);
+  const vm3 = new VM(8, 256, 1280);
   vm3.loadState(snapshot);
 
   const output: (number | string)[] = [];
@@ -592,13 +592,13 @@ test("peripheral name survives saveState", () => {
     vm.setMemory(vm.fetchMemory(args[0]) * 3, args[1]);
   };
 
-  const vm1 = new VM(8, 16, 256, 1280);
+  const vm1 = new VM(8, 256, 1280);
   vm1.registerPeripheral("TRIPLE", handler);
   for (const _ of vm1.compile(`SET 7 >> r0\nTRIPLE r0 >> r1\nPRINT r1\nHALT`)) {}
 
   const snapshot = vm1.saveState();
 
-  const vm2 = new VM(8, 16, 256, 1280);
+  const vm2 = new VM(8, 256, 1280);
   vm2.registerPeripheral("TRIPLE", handler); // re-register
   vm2.loadState(snapshot);
 
@@ -612,17 +612,17 @@ test("peripheral name survives saveState", () => {
 });
 
 test("registers survive saveState — including strings", () => {
-  const vm1 = new VM(8, 16, 256, 1280);
+  const vm1 = new VM(8, 256, 1280);
   for (const _ of vm1.compile(`SET "lunatech" >> r0\nSET 42 >> r1\nHALT`)) {}
   const gen = vm1.run();
   while (!gen.next().done) {}
 
   const snapshot = vm1.saveState();
-  const vm2 = new VM(8, 16, 256, 1280);
+  const vm2 = new VM(8, 256, 1280);
   vm2.loadState(snapshot);
 
-  expect(vm2.registerMemory[0], { tag: "string", data: "lunatech" });
-  expect(vm2.registerMemory[1], { tag: "int",    data: 42 });
+  expect(vm2.registerMemory[0], "lunatech");
+  expect(vm2.registerMemory[1], 42);
 });
 
 // -------------------------------------------------------------------
@@ -646,22 +646,22 @@ test("HALT stops immediately", () => {
 section("13. Extended register range (r0–r15)");
 
 test("SET and PRINT on r15", () => {
-  const vm = new VM(16, 16, 128, 1280);
+  const vm = new VM(16, 128, 1280);
   expect(run(`SET 99 >> r15\nPRINT r15\nHALT`, vm), [99]);
 });
 
 test("arithmetic across r0 and r15", () => {
-  const vm = new VM(16, 16, 128, 1280);
+  const vm = new VM(16, 128, 1280);
   expect(run(`SET 40 >> r0\nSET 2 >> r15\nADD r0 r15 >> r8\nPRINT r8\nHALT`, vm), [42]);
 });
 
 test("r-register out of bounds throws with 16-reg VM", () => {
-  const vm = new VM(16, 16, 128, 1280);
+  const vm = new VM(16, 128, 1280);
   expectThrows(() => run(`SET 1 >> r16\nHALT`, vm), "Outside register memory bounds");
 });
 
 test("auto assigns into r8–r15 when lower regs are claimed", () => {
-  const vm = new VM(16, 16, 128, 1280);
+  const vm = new VM(16, 128, 1280);
   const out = run(`
     $a = r0
     $b = r1
@@ -681,7 +681,7 @@ test("auto assigns into r8–r15 when lower regs are claimed", () => {
 
 test("call stack depth 128 — deep recursion within limit", () => {
   // 127 nested calls — should succeed
-  const vm = new VM(16, 16, 128, 1280);
+  const vm = new VM(16, 128, 1280);
   expect(run(`
     SET 127 >> r0
     SET 0 >> r1
@@ -699,7 +699,7 @@ test("call stack depth 128 — deep recursion within limit", () => {
 });
 
 test("call stack depth 128 — overflow at 129 throws", () => {
-  const vm = new VM(16, 16, 128, 1280);
+  const vm = new VM(16, 128, 1280);
   expectThrows(() => run(`
     SET 130 >> r0
     CALL depth
